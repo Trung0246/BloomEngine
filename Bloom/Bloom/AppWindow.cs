@@ -15,7 +15,7 @@ namespace Bloom
         /// <summary>
         /// App window constructor
         /// </summary>
-        public AppWindow() : base(new Vector2(1280, 960), "Test App", 30.0)
+        public AppWindow() : base(new Vector2(1280, 960), "Test App", 60.0)
         {
             // Create the menu scene
             MenuScene = new GameScene(this);

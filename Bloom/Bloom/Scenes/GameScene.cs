@@ -4,6 +4,7 @@ using Bloom.RenderPasses;
 using Bloom.ImageEffects;
 using VulkanCore;
 using System.Numerics;
+using Bloom.Handlers;
 
 namespace Bloom.Scenes
 {
@@ -13,12 +14,13 @@ namespace Bloom.Scenes
 
         private BasicRenderPass TriangleRenderPass;
         private ClearEffect ClearEffect;
-        private SpriteEffect SpriteEffect;
-        private TransitionEffect TransitionEffect;
+        private BulletHandler BulletHandler;
+        private TimerHandler TimerHandler;
+        private Animation TestAnimation;
 
-        public GameScene(WyvernWindow window) : base("Menu", window)
+        public GameScene(WyvernWindow window) : base(nameof(GameScene), window)
         {
-            Content.Add<Texture2D>("TriangleTexture", "test.png");
+            Content.Add<Texture2D>("TestBullets", "bullets.png");
         }
 
         /// <summary>
@@ -30,27 +32,27 @@ namespace Bloom.Scenes
             ClearEffect = new ClearEffect(Graphics, TriangleRenderPass);
             ClearEffect.Start();
             ClearEffect.ClearColor = new ClearColorValue(0.5f, 0.7f, 0.9f);
-            SpriteEffect = new SpriteEffect(
-                    Graphics,
-                    TriangleRenderPass,
-                    2000,
-                    ClearEffect.FinalLayout,
-                    ClearEffect.FinalAccess,
-                    ClearEffect.FinalStage
-                );
-            SpriteEffect.Start();
-            var tex = Content["TriangleTexture"] as Texture2D;
-            new SpriteInstance(SpriteEffect, Vector3.Zero, Vector3.Zero, new Vector2(24f, 24f), tex, new Rect2D(0, 0, 24, 24), null);
-            TransitionEffect = new TransitionEffect(
-                    Graphics,
-                    SpriteEffect.FinalLayout,
-                    SpriteEffect.FinalAccess,
-                    SpriteEffect.FinalStage,
-                    ImageLayout.ColorAttachmentOptimal,
-                    Accesses.MemoryRead,
-                    PipelineStages.BottomOfPipe
-                );
-            TransitionEffect.Start();
+            BulletHandler = new BulletHandler(this, 200000, ClearEffect);
+            BulletHandler.Start();
+            TimerHandler = new TimerHandler(this);
+
+            TestAnimation = new Animation(new Animation.Instruction[] {
+                Animation.Instruction.SetScale(0f, new Vector2(64f, 64f)),
+                Animation.Instruction.LerpScale(0f, 1f, new Vector2(16f, 16f)),
+                Animation.Instruction.None(20f)
+            });
+            TimerHandler.StartTimer(0.1, () =>
+            {
+                var tex = Content["TestBullets"] as Texture2D;
+                var rand = new System.Random();
+                for (var i = 0; i < 30; i++)
+                {
+                    var x = (rand.Next() % 10) * 18;
+                    var rect = new Rect2D(1 + x, 1 + x, 16, 16);
+                    BulletHandler.FireRaw(Vector3.Zero, (float)(rand.NextDouble() * 360.0), 60f, tex, rect, TestAnimation);
+                }
+                Debug.Info(BulletHandler.Bullets.Count.ToString());
+            }, -1);
         }
 
         /// <summary>
@@ -58,12 +60,9 @@ namespace Bloom.Scenes
         /// </summary>
         public override void OnEnd()
         {
-            // Dispose of render pass
             TriangleRenderPass.Dispose();
-            // End clear effect
             ClearEffect.End();
-            // End triangle effect
-            SpriteEffect.End();
+            BulletHandler.End();
         }
 
         /// <summary>
@@ -71,6 +70,7 @@ namespace Bloom.Scenes
         /// </summary>
         public override void OnUpdate()
         {
+            TimerHandler.Update();
         }
 
         /// <summary>
@@ -81,12 +81,9 @@ namespace Bloom.Scenes
         /// <param name="finished"></param>
         public override void OnDraw(Semaphore start, int imageIndex, out Semaphore finished)
         {
-            // Clear screen
             ClearEffect.Draw(start, Graphics.SwapchainAttachmentImages[imageIndex]);
-            // Draw triangle
-            SpriteEffect.Draw(ClearEffect.FinishedSemaphore, Graphics.SwapchainAttachmentImages[imageIndex]);
-            // We are finished when the triangle is drawn
-            finished = SpriteEffect.FinishedSemaphore;
+            BulletHandler.Draw(ClearEffect.FinishedSemaphore, imageIndex, out var bulletsFinished);
+            finished = bulletsFinished;
         }
     }
 }
