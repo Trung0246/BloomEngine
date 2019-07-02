@@ -14,6 +14,7 @@ namespace Bloom.Scenes
 
         private BasicRenderPass TriangleRenderPass;
         private ClearEffect ClearEffect;
+        private PlayerHandler PlayerHandler;
         private BulletHandler BulletHandler;
         private TimerHandler TimerHandler;
         private Animation TestAnimation;
@@ -32,6 +33,7 @@ namespace Bloom.Scenes
             ClearEffect = new ClearEffect(Graphics, TriangleRenderPass);
             ClearEffect.Start();
             ClearEffect.ClearColor = new ClearColorValue(0.5f, 0.7f, 0.9f);
+            PlayerHandler = new PlayerHandler(1);
             BulletHandler = new BulletHandler(this, 200000, ClearEffect);
             BulletHandler.Start();
             TimerHandler = new TimerHandler(this);
@@ -41,11 +43,11 @@ namespace Bloom.Scenes
                 Animation.Instruction.LerpScale(0f, 1f, new Vector2(16f, 16f)),
                 Animation.Instruction.None(20f)
             });
-            TimerHandler.StartTimer(0.1, () =>
+            TimerHandler.StartTimer(0.5, () =>
             {
                 var tex = Content["TestBullets"] as Texture2D;
                 var rand = new System.Random();
-                for (var i = 0; i < 30; i++)
+                for (var i = 0; i < 3000; i++)
                 {
                     var x = (rand.Next() % 10) * 18;
                     var rect = new Rect2D(1 + x, 1 + x, 16, 16);

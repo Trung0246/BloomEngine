@@ -30,6 +30,8 @@ namespace Bloom.Handlers
 
             public void Execute()
             {
+                if (!Ready)
+                    return;
                 Action();
                 if (Times > -1)
                     Times--;
@@ -41,6 +43,11 @@ namespace Bloom.Handlers
                 {
                     EndTime += Duration;
                 }
+            }
+
+            public void Stop()
+            {
+                Times = 0;
             }
         }
 
@@ -64,6 +71,14 @@ namespace Bloom.Handlers
         public void Update()
         {
             foreach (
+                    var timer in Timers
+                        .Where(e => e.Ended)
+                        .ToArray()
+                )
+            {
+                Timers.Remove(timer);
+            }
+                foreach (
                     var timer in Timers
                         .Where(e => e.Ready)
                         .ToArray()
