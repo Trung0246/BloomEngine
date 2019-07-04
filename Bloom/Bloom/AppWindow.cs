@@ -2,6 +2,7 @@
 using VulkanCore;
 using WyvernFramework;
 using Bloom.Scenes;
+using Bloom.Handlers;
 
 namespace Bloom
 {
@@ -10,17 +11,31 @@ namespace Bloom
     /// </summary>
     public class AppWindow : WyvernWindow
     {
-        private GameScene MenuScene { get; }
+        private GameScene GameScene { get; }
 
         /// <summary>
         /// App window constructor
         /// </summary>
         public AppWindow() : base(new Vector2(1280, 960), "Test App", 60.0)
         {
-            // Create the menu scene
-            MenuScene = new GameScene(this);
-            // Start the menu scene
-            MenuScene.Start();
+            GameScene = new GameScene(this);
+            GameScene.Start();
+        }
+
+        /// <summary>
+        /// Called when window starts
+        /// </summary>
+        public override void OnStart()
+        {
+            ScriptHandler.Init();
+        }
+
+        /// <summary>
+        /// Called when window closes
+        /// </summary>
+        public override void OnClose()
+        {
+            ScriptHandler.Close();
         }
 
         /// <summary>
@@ -28,9 +43,7 @@ namespace Bloom
         /// </summary>
         public override void OnUpdate()
         {
-            // Update the menu scene
-            MenuScene.Update();
-            // Set title
+            GameScene.Update();
             Title = $"Test App | UPS={1.0 / SmoothedUpdateDuration:0.00} FPS={1.0 / SmoothedDrawDuration:0.00}";
         }
 
@@ -42,8 +55,7 @@ namespace Bloom
         /// <param name="finished">The semaphore we will signal when drawing is done</param>
         protected override void OnDraw(Semaphore start, int imageIndex, out Semaphore finished)
         {
-            // Draw the menu scene
-            MenuScene.Draw(start, imageIndex, out finished);
+            GameScene.Draw(start, imageIndex, out finished);
         }
     }
 }

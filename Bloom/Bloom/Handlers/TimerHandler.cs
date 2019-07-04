@@ -53,7 +53,7 @@ namespace Bloom.Handlers
 
         public string Name => nameof(BulletHandler);
 
-        public string Description => "The rimwe handler";
+        public string Description => "The timer handler";
 
         private GameScene Scene { get; }
 

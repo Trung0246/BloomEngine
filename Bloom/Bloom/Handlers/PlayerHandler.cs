@@ -1,18 +1,23 @@
 ﻿using System;
 using System.Linq;
+using WyvernFramework;
 
 namespace Bloom.Handlers
 {
     /// <summary>
     /// Handler for player input, player information, etc.
     /// </summary>
-    public class PlayerHandler
+    public class PlayerHandler : IDebug
     {
         /// <summary>
         /// Used for interfacing with a single player's input, information, etc.
         /// </summary>
-        public class PlayerInterface : IDisposable
+        public class PlayerInterface : IDebug, IDisposable
         {
+            public string Name => nameof(PlayerInterface);
+
+            public string Description => $"A player interface for player {PlayerNumber}";
+
             public bool Disposed { get; private set; }
 
             /// <summary>
@@ -45,6 +50,10 @@ namespace Bloom.Handlers
             }
         }
 
+        public string Name => nameof(PlayerHandler);
+
+        public string Description => "The timer handler";
+
         private PlayerInterface[] _Players = new PlayerInterface[] { };
         private int _Count;
 
@@ -74,7 +83,7 @@ namespace Bloom.Handlers
                 {
                     var newPlayers = _Players.AsEnumerable();
                     for (; _Count < value; _Count++)
-                        newPlayers = newPlayers.Append(new PlayerInterface(_Count));
+                        newPlayers = Enumerable.Append(newPlayers, new PlayerInterface(_Count));
                     _Players = newPlayers.ToArray();
                 }
             }
