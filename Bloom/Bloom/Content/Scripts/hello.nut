@@ -1,4 +1,4 @@
 function main()
 {
-	print("Hello!");
+	Console.WriteLine("Hello!");
 }

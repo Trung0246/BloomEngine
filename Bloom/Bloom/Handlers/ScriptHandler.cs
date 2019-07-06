@@ -25,33 +25,11 @@ namespace Bloom.Handlers
             Squirrel.SetErrorHandlers();
             //Squirrel.EnableDebugInfo(true);
 
-            //RegisterCores();
-            //SetGlobal("testPrint", MakeFunction(ConsoleCore.WriteLine));
+            RegisterCores();
 
             PushCompiledFile("hello.nut");
             PopToCall();
             CallGlobal("main");
-
-            
-
-            
-            Console.WriteLine(string.Join(", ", CallGlobal("areaOfCircle", 10)));
-            Console.WriteLine(Squirrel.GetTop());
-
-            /*
-            var config = new WrenConfig();
-            config.Write += OnPrint;
-            config.Error += OnError;
-            config.LoadModule += OnLoadModule;
-            config.BindForeignClass += OnBindForeignClass;
-            config.BindForeignMethod += OnBindForeignMethod;
-            Wren = new WrenVM(config);
-
-            // TODO: Remove these tests
-            Wren.EnsureSlots(2);
-            Wren.GetVariable("main", "System", 0);
-            Wren.SetSlotDouble(1, 1.234);
-            Wren.Call(Wren.MakeCallHandle("print(_)"));*/
         }
 
         public static void Close()
@@ -69,7 +47,7 @@ namespace Bloom.Handlers
             Debug.Error(message, "Squirrel");
         }
 
-        private static bool IsOK(this int result)
+        public static bool IsOK(this int result)
         {
             return result == 0;
         }
@@ -234,7 +212,7 @@ namespace Bloom.Handlers
         /// <param name="vm"></param>
         /// <param name="idx"></param>
         /// <returns></returns>
-        private static int GetFixed(this Squirrel vm, int idx)
+        public static int GetFixed(this Squirrel vm, int idx)
         {
             if (idx < 0)
                 return vm.Get(Squirrel.GetTop() + idx + 1);
@@ -248,7 +226,7 @@ namespace Bloom.Handlers
         /// <param name="vm"></param>
         /// <param name="idx"></param>
         /// <returns></returns>
-        private static int SetFixed(this Squirrel vm, int idx)
+        public static int SetFixed(this Squirrel vm, int idx)
         {
             if (idx < 0)
                 return vm.Set(Squirrel.GetTop() + idx + 1);
@@ -262,7 +240,7 @@ namespace Bloom.Handlers
         /// <param name="vm"></param>
         /// <param name="idx"></param>
         /// <returns></returns>
-        private static void PushFixed(this Squirrel vm, int idx)
+        public static void PushFixed(this Squirrel vm, int idx)
         {
             if (idx < 0)
                 vm.Push(Squirrel.GetTop() + idx + 1);
@@ -277,7 +255,7 @@ namespace Bloom.Handlers
         /// <param name="vm"></param>
         /// <param name="idx"></param>
         /// <returns></returns>
-        private static void RemoveFixed(this Squirrel vm, int idx)
+        public static void RemoveFixed(this Squirrel vm, int idx)
         {
             if (idx < 0)
                 vm.Remove(Squirrel.GetTop() + idx + 1);
@@ -286,23 +264,38 @@ namespace Bloom.Handlers
         }
 
         /// <summary>
-        /// Get a copy of the table at idx in the stack as a dictionary
+        /// For whatever reason, the normal Squirrel.GetType is broken with negative indices
+        /// so this is a workaround extension method
         /// </summary>
         /// <param name="vm"></param>
         /// <param name="idx"></param>
-        /// <param name="dict"></param>
-        private static void GetTableAsDictionary(this Squirrel vm, int idx, out Dictionary<object, object> dict)
+        /// <returns></returns>
+        public static ObjectType GetTypeFixed(this Squirrel vm, int idx)
         {
-            dict = new Dictionary<object, object>();
-            vm.PushNull();
-            while (vm.Next(idx - 1).IsOK())
-            {
-                var key = vm.GetDynamic(-2);
-                var value = vm.GetDynamic(-1);
-                dict.Add(key, value);
-                vm.Pop(2);
-            }
-            vm.Pop(1);
+            if (idx < 0)
+                return vm.GetType(Squirrel.GetTop() + idx + 1);
+            return vm.GetType(idx);
+        }
+
+        /// <summary>
+        /// Get the table at idx in the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        public static SqTable GetTable(this Squirrel vm, int idx)
+        {
+            vm.GetStackObj(idx, out var tableRef);
+            return new SqTable(tableRef);
+        }
+
+        /// <summary>
+        /// Push a table on the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="table"></param>
+        public static void PushTable(this Squirrel vm, SqTable table)
+        {
+            vm.PushObject(table.ObjectRef);
         }
 
         /// <summary>
@@ -310,7 +303,7 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="vm"></param>
         /// <param name="obj"></param>
-        private static void PushDynamic(this Squirrel vm, object obj)
+        public static void PushDynamic(this Squirrel vm, object obj)
         {
             if (obj is null)
             {
@@ -348,6 +341,12 @@ namespace Bloom.Handlers
                 case nameof(String):
                     vm.PushString((string)(object)obj, -1);
                     break;
+                case nameof(SqTable):
+                    vm.PushTable((SqTable)(object)obj);
+                    break;
+                case nameof(Function):
+                    Squirrel.NewClosure((Function)(object)obj, 0);
+                    break;
             }
         }
 
@@ -355,16 +354,15 @@ namespace Bloom.Handlers
         /// Get the value at a position in the stack with dynamic type checking
         /// </summary>
         /// <returns></returns>
-        private static object GetDynamic(this Squirrel vm, int idx)
+        public static object GetDynamic(this Squirrel vm, int idx)
         {
-            var type = vm.GetType(idx);
+            var type = vm.GetTypeFixed(idx);
             switch (type)
             {
                 default:
                     throw new InvalidOperationException($"Cannot get value of type {type}");
                 case ObjectType.Table:
-                    vm.GetTableAsDictionary(idx, out var tobj);
-                    return tobj;
+                    return vm.GetTable(idx);
                 case ObjectType.Integer:
                     vm.GetInteger(idx, out var iobj);
                     return iobj;
@@ -382,8 +380,23 @@ namespace Bloom.Handlers
             }
         }
 
-        private static class ConsoleCore
+        // = Cores =
+        private static void RegisterCores()
         {
+            ConsoleCore.RegisterCore();
+        }
+
+        public static class ConsoleCore
+        {
+            public static void RegisterCore()
+            {
+                var module = new SqTable();
+                SetGlobal("Console", module);
+
+                module["Write"] = MakeFunction(ConsoleCore.Write);
+                module["WriteLine"] = MakeFunction(ConsoleCore.WriteLine);
+            }
+
             public static int Write(Squirrel vm, int argCount)
             {
                 for (var i = 0; i < argCount; i++)
