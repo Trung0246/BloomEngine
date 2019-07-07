@@ -26,10 +26,14 @@ namespace Bloom.Handlers
             //Squirrel.EnableDebugInfo(true);
 
             RegisterCores();
+            EnemyClass.Register();
 
             PushCompiledFile("hello.nut");
-            PopToCall();
+            Squirrel.PushRootTable();
+            PopToCallMethod(-2);
             CallGlobal("main");
+            var testEnemy = GetGlobal("TestEnemyInstance") as SqInstance;
+            testEnemy.CallMemberOrSlot("PrintName");
         }
 
         public static void Close()
@@ -44,7 +48,7 @@ namespace Bloom.Handlers
 
         private static void OnError(Squirrel v, string message)
         {
-            Debug.Error(message, "Squirrel");
+            Debug.Write(ConsoleColor.Black, ConsoleColor.Red, message);
         }
 
         public static bool IsOK(this int result)
@@ -56,7 +60,7 @@ namespace Bloom.Handlers
         /// Push a slot from the current root table
         /// </summary>
         /// <param name="key"></param>
-        private static void PushGlobal(string key)
+        public static void PushGlobal(string key)
         {
             Squirrel.PushRootTable();
             Squirrel.PushString(key, -1);
@@ -69,7 +73,7 @@ namespace Bloom.Handlers
         /// Get a slot from the current root table
         /// </summary>
         /// <param name="key"></param>
-        private static object GetGlobal(string key)
+        public static object GetGlobal(string key)
         {
             Squirrel.PushRootTable();
             Squirrel.PushString(key, -1);
@@ -84,7 +88,7 @@ namespace Bloom.Handlers
         /// Pop a value and set a slot in the root table to that value
         /// </summary>
         /// <param name="key"></param>
-        private static void PopToGlobal(string key)
+        public static void PopToGlobal(string key)
         {
             Squirrel.PushRootTable();
             Squirrel.PushString(key, -1);
@@ -99,7 +103,7 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="key"></param>
         /// <param name="obj"></param>
-        private static void SetGlobal(string key, Function obj)
+        public static void SetGlobal(string key, Function obj)
         {
             Squirrel.PushRootTable();
             Squirrel.PushString(key, -1);
@@ -114,7 +118,7 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="key"></param>
         /// <param name="obj"></param>
-        private static void SetGlobal(string key, object obj)
+        public static void SetGlobal(string key, object obj)
         {
             Squirrel.PushRootTable();
             Squirrel.PushString(key, -1);
@@ -129,7 +133,7 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="source"></param>
         /// <param name="name"></param>
-        private static void PushCompiledString(string source, string name)
+        public static void PushCompiledString(string source, string name)
         {
             if (!Squirrel.CompileBuffer(source, source.Length, name, true).IsOK())
                 throw new Exception($"Unable to compile script \"{name}\"");
@@ -139,7 +143,7 @@ namespace Bloom.Handlers
         /// Compile a source then push the function
         /// </summary>
         /// <param name="path"></param>
-        private static void PushCompiledFile(string path)
+        public static void PushCompiledFile(string path)
         {
             PushCompiledString(File.ReadAllText(Path.Combine(ScriptRoot, path)), path);
         }
@@ -149,17 +153,19 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="parameters"></param>
         /// <returns></returns>
-        private static object[] PopToCall(params object[] parameters)
+        public static object[] PopToCallMethod(int idx, params object[] arguments)
         {
-            var top = Squirrel.GetTop();
-            Squirrel.PushRootTable();
-            foreach (var obj in parameters)
+            var top = Squirrel.GetTop() + idx + 1;
+            foreach (var obj in arguments)
                 Squirrel.PushDynamic(obj);
-            if (!Squirrel.Call(parameters.Length + 1, true, true).IsOK())
-                throw new InvalidOperationException("Unable to call the closure");
+            if (!Squirrel.Call(Squirrel.GetTop() - top, true, true).IsOK())
+            {
+                Squirrel.Pop(1);
+                throw new InvalidOperationException($"Unable to call the closure");
+            }
             var returnCount = Squirrel.GetTop() - top;
             var returns = new object[returnCount];
-            var idx = top + 1;
+            idx = top + 1;
             for (var i = 0; i < returnCount; i++)
                 returns[i] = Squirrel.GetDynamic(idx++);
             Squirrel.Pop(1 + returnCount);
@@ -172,10 +178,11 @@ namespace Bloom.Handlers
         /// <param name="key"></param>
         /// <param name="parameters"></param>
         /// <returns></returns>
-        private static object[] CallGlobal(string key, params object[] parameters)
+        public static object[] CallGlobal(string key, params object[] parameters)
         {
             PushGlobal(key);
-            return PopToCall(parameters);
+            Squirrel.PushRootTable();
+            return PopToCallMethod(-2, parameters);
         }
 
         /// <summary>
@@ -183,7 +190,7 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="func"></param>
         /// <returns></returns>
-        private static Function MakeFunction(Func<Squirrel, int, int> func)
+        public static Function MakeFunction(Func<Squirrel, int, int> func)
         {
             return new Function((vm) => func(vm, vm.GetTop() - 1));
         }
@@ -193,15 +200,15 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="idx"></param>
         /// <returns></returns>
-        private static object GetArg(int idx)
+        public static object GetArg(int idx)
         {
             return Squirrel.GetDynamic(2 + idx);
         }
 
         /// <summary>
-        /// The stack index at which, during a call, the environment object ("this") should be
+        /// The table representing the environment object ("this")
         /// </summary>
-        private static int ThisIndex => 1;
+        public static SqTable This => Squirrel.GetTable(1);
 
         // = Squirrel extensions =
 
@@ -289,6 +296,28 @@ namespace Bloom.Handlers
         }
 
         /// <summary>
+        /// Get the class at idx in the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        public static SqClass GetSqClass(this Squirrel vm, int idx)
+        {
+            vm.GetStackObj(idx, out var classRef);
+            return new SqClass(classRef);
+        }
+
+        /// <summary>
+        /// Get the instance at idx in the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        public static SqInstance GetInstance(this Squirrel vm, int idx)
+        {
+            vm.GetStackObj(idx, out var classRef);
+            return new SqInstance(classRef);
+        }
+
+        /// <summary>
         /// Push a table on the stack
         /// </summary>
         /// <param name="vm"></param>
@@ -296,6 +325,16 @@ namespace Bloom.Handlers
         public static void PushTable(this Squirrel vm, SqTable table)
         {
             vm.PushObject(table.ObjectRef);
+        }
+
+        /// <summary>
+        /// Push a class on the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="class"></param>
+        public static void PushClass(this Squirrel vm, SqClass sqClass)
+        {
+            vm.PushObject(sqClass.ObjectRef);
         }
 
         /// <summary>
@@ -313,39 +352,41 @@ namespace Bloom.Handlers
             switch (obj.GetType().Name)
             {
                 default:
+                    if (obj is SqObject sqObj)
+                    {
+                        vm.PushObject(sqObj.ObjectRef);
+                        break;
+                    }
                     throw new InvalidOperationException($"Cannot push value of type {obj.GetType().Name}");
                 case nameof(Byte):
-                    vm.PushInteger((byte)(object)obj);
+                    vm.PushInteger((byte)obj);
                     break;
                 case nameof(Int16):
-                    vm.PushInteger((short)(object)obj);
+                    vm.PushInteger((short)obj);
                     break;
                 case nameof(Int32):
-                    vm.PushInteger((int)(object)obj);
+                    vm.PushInteger((int)obj);
                     break;
                 case nameof(Int64):
-                    vm.PushInteger((int)(long)(object)obj);
+                    vm.PushInteger((int)(long)obj);
                     break;
                 case nameof(IntPtr):
-                    vm.PushUserPointer((IntPtr)(object)obj);
+                    vm.PushUserPointer((IntPtr)obj);
                     break;
                 case nameof(Single):
-                    vm.PushFloat((float)(object)obj);
+                    vm.PushFloat((float)obj);
                     break;
                 case nameof(Double):
-                    vm.PushFloat((float)(double)(object)obj);
+                    vm.PushFloat((float)(double)obj);
                     break;
                 case nameof(Boolean):
-                    vm.PushBool((bool)(object)obj);
+                    vm.PushBool((bool)obj);
                     break;
                 case nameof(String):
-                    vm.PushString((string)(object)obj, -1);
-                    break;
-                case nameof(SqTable):
-                    vm.PushTable((SqTable)(object)obj);
+                    vm.PushString((string)obj, -1);
                     break;
                 case nameof(Function):
-                    Squirrel.NewClosure((Function)(object)obj, 0);
+                    Squirrel.NewClosure((Function)obj, 0);
                     break;
             }
         }
@@ -361,6 +402,10 @@ namespace Bloom.Handlers
             {
                 default:
                     throw new InvalidOperationException($"Cannot get value of type {type}");
+                case ObjectType.Instance:
+                    return vm.GetInstance(idx);
+                case ObjectType.Class:
+                    return vm.GetSqClass(idx);
                 case ObjectType.Table:
                     return vm.GetTable(idx);
                 case ObjectType.Integer:

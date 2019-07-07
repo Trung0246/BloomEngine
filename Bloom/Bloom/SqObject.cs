@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using SqDotNet;
+using Bloom.Handlers;
 
 namespace Bloom
 {
-    public class SqObject
+    public class SqObject : IEquatable<SqObject>
     {
         protected Squirrel VM { get; }
         public SqDotNet.Object ObjectRef { get; }
@@ -23,6 +25,40 @@ namespace Bloom
         public void PushSelf()
         {
             VM.PushObject(ObjectRef);
+        }
+
+        public ObjectType GetObjectType()
+        {
+            PushSelf();
+            var type = VM.GetTypeFixed(-1);
+            VM.Pop(1);
+            return type;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as SqObject);
+        }
+
+        public bool Equals(SqObject other)
+        {
+            return other != null &&
+                   ObjectRef.Equals(other.ObjectRef);
+        }
+
+        public override int GetHashCode()
+        {
+            return ObjectRef.GetHashCode();
+        }
+
+        public static bool operator ==(SqObject left, SqObject right)
+        {
+            return EqualityComparer<SqObject>.Default.Equals(left, right);
+        }
+
+        public static bool operator !=(SqObject left, SqObject right)
+        {
+            return !(left == right);
         }
     }
 }

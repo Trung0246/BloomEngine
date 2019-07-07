@@ -7,7 +7,7 @@ using Bloom.Handlers;
 
 namespace Bloom
 {
-    public class SqTable : SqObject, IDictionary<object, object>
+    public class SqTable : SqObject, IDictionary<object, object>, IEquatable<object>
     {
         bool ICollection<KeyValuePair<object, object>>.IsReadOnly => false;
 
@@ -22,9 +22,42 @@ namespace Bloom
             }
         }
 
-        ICollection<object> IDictionary<object, object>.Keys => (ICollection<object>)Pairs.Select(e => e.Key);
+        public ICollection<object> Keys
+        {
+            get
+            {
+                var keys = new List<object>();
+                PushSelf();
+                VM.PushNull();
+                while (VM.Next(VM.GetTop() - 1).IsOK())
+                {
+                    var key = VM.GetDynamic(-2);
+                    keys.Add(key);
+                    VM.Pop(2);
+                }
+                VM.Pop(1);
+                return keys;
+            }
+        }
 
-        ICollection<object> IDictionary<object, object>.Values => (ICollection<object>)Pairs.Select(e => e.Value);
+
+        public ICollection<object> Values
+        {
+            get
+            {
+                var values = new List<object>();
+                PushSelf();
+                VM.PushNull();
+                while (VM.Next(VM.GetTop() - 1).IsOK())
+                {
+                    var value = VM.GetDynamic(-1);
+                    values.Add(value);
+                    VM.Pop(2);
+                }
+                VM.Pop(1);
+                return values;
+            }
+        }
 
         public IEnumerable<KeyValuePair<object, object>> Pairs
         {
@@ -33,7 +66,7 @@ namespace Bloom
                 var pairs = new List<KeyValuePair<object, object>>();
                 PushSelf();
                 VM.PushNull();
-                while (VM.Next(-2).IsOK())
+                while (VM.Next(VM.GetTop() - 1).IsOK())
                 {
                     var key = VM.GetDynamic(-2);
                     var value = VM.GetDynamic(-1);
@@ -192,6 +225,31 @@ namespace Bloom
         public SqTableEnumerator GetEnumerator()
         {
             return new SqTableEnumerator(Pairs);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as SqObject);
+        }
+
+        public static bool operator ==(SqTable left, SqTable right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(SqTable left, SqTable right)
+        {
+            return !(left == right);
+        }
+
+        public override string ToString()
+        {
+            return $"{{{string.Join(", ", Pairs.Select(e => $"{e.Key}: {e.Value}"))}}}";
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
         }
     }
 
