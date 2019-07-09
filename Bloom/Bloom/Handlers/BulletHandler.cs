@@ -63,13 +63,20 @@ namespace Bloom.Handlers
             finished = SpriteEffect.FinishedSemaphore;
         }
 
-        public Bullet FireRaw(Vector3 pos, float angle, float speed, Texture2D tex, Rect2D rect, Animation anim = null)
+        public Bullet FireRaw(Vector3 pos, float angle, float speed, TextureRegion textureRegion, Animation anim = null)
         {
             var vel = new Vector3(MathX.DCos(angle) * speed, MathX.DSin(angle) * speed, 0f);
-            var scale = new Vector2(rect.Extent.Width, rect.Extent.Height);
+            var tex = textureRegion.Texture;
+            var rect = textureRegion.Rectangle;
+            var scale = new Vector2(rect.Z, rect.W);
+            rect /= new Vector4(
+                    tex.Image.Extent.Width, tex.Image.Extent.Height,
+                    tex.Image.Extent.Width, tex.Image.Extent.Height
+                );
             var sprite = new SpriteInstance(SpriteEffect, pos, vel, scale, tex, rect, anim);
             sprite.Rotation = MathX.DegToRad(angle - 90f);
-            return new Bullet(this, sprite);
+            var bullet = new Bullet(this, sprite);
+            return bullet;
         }
 
         public void Register(Bullet bullet)

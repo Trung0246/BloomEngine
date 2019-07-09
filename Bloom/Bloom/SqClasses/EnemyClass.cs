@@ -2,13 +2,13 @@
 using Bloom.Handlers;
 using SqDotNet;
 
-namespace Bloom
+namespace Bloom.SqClasses
 {
     public class EnemyClass : SqClass
     {
         public static EnemyClass RegisteredClass { get; private set; }
 
-        private EnemyClass()
+        private EnemyClass() : base("Enemy")
         {
         }
 

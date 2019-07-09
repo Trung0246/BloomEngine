@@ -23,9 +23,11 @@ namespace Bloom
             }
         }
 
-        public SqClass(SqClass baseClass = null) : this(GenerateClassRef(ScriptHandler.Squirrel, baseClass))
+        public SqClass(string className, SqClass baseClass = null) : this(GenerateClassRef(ScriptHandler.Squirrel, baseClass))
         {
             VM.Pop(baseClass is null ? 1 : 2);
+
+            NewMethod("_typeof", ScriptHandler.MakeFunction((_, __) => { VM.PushString(className, -1); return 1; }));
         }
 
         public SqClass(SqDotNet.Object classRef)
@@ -43,6 +45,14 @@ namespace Bloom
             return obj;
         }
 
+        public SqInstance CallConstructor(params object[] arguments)
+        {
+            PushSelf();
+            PushSelf();
+            var inst = ScriptHandler.PopToCallAsMethod(-2, arguments)[0];
+            return inst as SqInstance;
+        }
+
         public void PushMember(string key)
         {
             PushSelf();
@@ -55,11 +65,11 @@ namespace Bloom
             VM.RemoveFixed(-2);
         }
 
-        public void CallMember(string key, params object[] arguments)
+        public object[] CallMember(string key, params object[] arguments)
         {
             PushMember(key);
             PushSelf();
-            ScriptHandler.PopToCallMethod(-2, arguments);
+            return ScriptHandler.PopToCallAsMethod(-2, arguments);
         }
 
         public void NewMember(string key, object value, bool isStatic = false)
@@ -75,12 +85,17 @@ namespace Bloom
                 VM.Pop(1);
                 throw new Exception($"Unable to create/set member \"{key}\"");
             }
-            VM.Pop(1);
+            VM.Pop(4);
         }
 
         public void NewMethod(string key, Function func, bool isStatic = false)
         {
             NewMember(key, func, isStatic);
+        }
+
+        public void SetConstructor(Function func)
+        {
+            NewMember("constructor", func, false);
         }
 
         public void NewField(string key, object value, bool isStatic = false)

@@ -22,7 +22,7 @@ namespace Bloom
             VM.Release(ObjectRef);
         }
 
-        public void PushSelf()
+        public virtual void PushSelf()
         {
             VM.PushObject(ObjectRef);
         }
@@ -33,6 +33,14 @@ namespace Bloom
             var type = VM.GetTypeFixed(-1);
             VM.Pop(1);
             return type;
+        }
+
+        public void SetDelegate(SqTable table)
+        {
+            PushSelf();
+            VM.PushTable(table);
+            VM.SetDelegate(VM.GetTop() - 1);
+            VM.Pop(1);
         }
 
         public override bool Equals(object obj)

@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
 using VulkanCore;
 using WyvernFramework;
 using Bloom.Scenes;
@@ -19,7 +20,6 @@ namespace Bloom
         public AppWindow() : base(new Vector2(1280, 960), "Test App", 60.0)
         {
             GameScene = new GameScene(this);
-            GameScene.Start();
         }
 
         /// <summary>
@@ -28,6 +28,7 @@ namespace Bloom
         public override void OnStart()
         {
             ScriptHandler.Init();
+            GameScene.Start();
         }
 
         /// <summary>
@@ -35,6 +36,7 @@ namespace Bloom
         /// </summary>
         public override void OnClose()
         {
+            Debug.WriteLine("CLOSING!!!");
             ScriptHandler.Close();
         }
 
@@ -43,6 +45,7 @@ namespace Bloom
         /// </summary>
         public override void OnUpdate()
         {
+            GC.Collect();
             GameScene.Update();
             Title = $"Test App | UPS={1.0 / SmoothedUpdateDuration:0.00} FPS={1.0 / SmoothedDrawDuration:0.00}";
         }

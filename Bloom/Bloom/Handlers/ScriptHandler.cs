@@ -1,8 +1,11 @@
 ﻿using SqDotNet;
 using System;
+using System.Linq;
+using System.Numerics;
 using System.Collections.Generic;
 using System.IO;
 using WyvernFramework;
+using Bloom.SqClasses;
 
 namespace Bloom.Handlers
 {
@@ -26,14 +29,21 @@ namespace Bloom.Handlers
             //Squirrel.EnableDebugInfo(true);
 
             RegisterCores();
+            VectorClass.Register();
+            TimerClass.Register();
+            BulletEmitterClass.Register();
             EnemyClass.Register();
 
-            PushCompiledFile("hello.nut");
+            PushCompiledFile("classes.nut");
             Squirrel.PushRootTable();
-            PopToCallMethod(-2);
-            CallGlobal("main");
-            var testEnemy = GetGlobal("TestEnemyInstance") as SqInstance;
-            testEnemy.CallMemberOrSlot("PrintName");
+            PopToCallAsMethod(-2);
+            //CallGlobal("main");
+
+            var hobj = new SqHostObject(5);
+            hobj.PushSelf();
+            hobj = Squirrel.GetHostObject(-1);
+            Squirrel.Pop(1);
+            Console.WriteLine(hobj.Object);
         }
 
         public static void Close()
@@ -153,7 +163,7 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="parameters"></param>
         /// <returns></returns>
-        public static object[] PopToCallMethod(int idx, params object[] arguments)
+        public static object[] PopToCallAsMethod(int idx, params object[] arguments)
         {
             var top = Squirrel.GetTop() + idx + 1;
             foreach (var obj in arguments)
@@ -182,8 +192,28 @@ namespace Bloom.Handlers
         {
             PushGlobal(key);
             Squirrel.PushRootTable();
-            return PopToCallMethod(-2, parameters);
+            return PopToCallAsMethod(-2, parameters);
         }
+
+        /// <summary>
+        /// Call a function in a global slot
+        /// </summary>
+        /// <param name="key"></param>
+        /// <param name="parameters"></param>
+        /// <returns></returns>
+        public static object[] CallGlobalAsMethod(SqObject receiver, string key, params object[] parameters)
+        {
+            PushGlobal(key);
+            receiver.PushSelf();
+            return PopToCallAsMethod(-2, parameters);
+        }
+
+        // Keep references to lambda functions to be used in squirrel
+        private static Dictionary<Func<Squirrel, int, int>, Func<Squirrel, int>> LambdaFunctions
+            = new Dictionary<Func<Squirrel, int, int>, Func<Squirrel, int>>();
+        // Keep references to squirrel functions
+        private static Dictionary<Func<Squirrel, int, int>, Function> SquirrelFunctions
+            = new Dictionary<Func<Squirrel, int, int>, Function>();
 
         /// <summary>
         /// Make a Squirrel function
@@ -192,7 +222,13 @@ namespace Bloom.Handlers
         /// <returns></returns>
         public static Function MakeFunction(Func<Squirrel, int, int> func)
         {
-            return new Function((vm) => func(vm, vm.GetTop() - 1));
+            if (SquirrelFunctions.TryGetValue(func, out var cachedFunc))
+                return cachedFunc;
+            Func<Squirrel, int> lambda = (vm) => func(vm, vm.GetTop() - 1);
+            var sqFunc = new Function(lambda);
+            LambdaFunctions.Add(func, lambda);
+            SquirrelFunctions.Add(func, sqFunc);
+            return sqFunc;
         }
 
         /// <summary>
@@ -202,13 +238,67 @@ namespace Bloom.Handlers
         /// <returns></returns>
         public static object GetArg(int idx)
         {
+            if (2 + idx > Squirrel.GetTop())
+                return default;
             return Squirrel.GetDynamic(2 + idx);
         }
 
         /// <summary>
-        /// The table representing the environment object ("this")
+        /// Get an argument (if in a called function) and check the type (for Squirrel class types)
         /// </summary>
-        public static SqTable This => Squirrel.GetTable(1);
+        /// <param name="idx"></param>
+        /// <returns></returns>
+        public static SqInstance GetArg(int idx, SqClass sqClass, string className)
+        {
+            if (2 + idx > Squirrel.GetTop())
+                return default;
+            var val = Squirrel.GetDynamic(2 + idx);
+            if (val is SqInstance instance && instance.IsInstanceOf(sqClass))
+                return instance;
+            throw ErrorHelper.WrongArgumentType(idx, val.GetType().Name, className);
+        }
+
+        /// <summary>
+        /// Get an argument (if in a called function) and check the type
+        /// </summary>
+        /// <param name="idx"></param>
+        /// <returns></returns>
+        public static T GetArg<T>(int idx)
+        {
+            if (2 + idx > Squirrel.GetTop())
+                return default;
+            var val = Squirrel.GetDynamic(2 + idx);
+            if (val is T already)
+                return already;
+            if (val is SqHostObject hostObj)
+            {
+                try
+                {
+                    return (T)Convert.ChangeType(hostObj.Object, typeof(T));
+                }
+                catch
+                {
+                    throw ErrorHelper.WrongArgumentType(idx, hostObj.Object.GetType().Name, typeof(T).Name);
+                }
+            }
+            try
+            {
+                return (T)Convert.ChangeType(val, typeof(T));
+            }
+            catch
+            {
+                if (val is SqInstance inst)
+                {
+                    throw ErrorHelper.WrongArgumentType(idx, $"{nameof(SqInstance)} (instanceof {inst.Class.GetType().Name})", typeof(T).Name);
+                }
+                throw ErrorHelper.WrongArgumentType(idx, val.GetType().Name, typeof(T).Name);
+            }
+        }
+
+        /// <summary>
+        /// The instance representing "this" during a call
+        /// </summary>
+        public static SqInstance This => Squirrel.GetInstance(1);
 
         // = Squirrel extensions =
 
@@ -318,6 +408,39 @@ namespace Bloom.Handlers
         }
 
         /// <summary>
+        /// Get the closure at idx in the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        public static SqClosure GetClosure(this Squirrel vm, int idx)
+        {
+            vm.GetStackObj(idx, out var funcRef);
+            return new SqClosure(funcRef);
+        }
+
+        /// <summary>
+        /// Get the user data at idx in the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        public static SqUserData GetSqUserData(this Squirrel vm, int idx)
+        {
+            vm.GetStackObj(idx, out var udRef);
+            return new SqUserData(udRef);
+        }
+
+        /// <summary>
+        /// Get the host object at idx in the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        public static SqHostObject GetHostObject(this Squirrel vm, int idx)
+        {
+            vm.GetStackObj(idx, out var objRef);
+            return new SqHostObject(objRef);
+        }
+
+        /// <summary>
         /// Push a table on the stack
         /// </summary>
         /// <param name="vm"></param>
@@ -331,10 +454,30 @@ namespace Bloom.Handlers
         /// Push a class on the stack
         /// </summary>
         /// <param name="vm"></param>
-        /// <param name="class"></param>
+        /// <param name="sqClass"></param>
         public static void PushClass(this Squirrel vm, SqClass sqClass)
         {
             vm.PushObject(sqClass.ObjectRef);
+        }
+
+        /// <summary>
+        /// Push a host object on the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="obj"></param>
+        public static void PushHostObject(this Squirrel vm, SqHostObject obj)
+        {
+            obj.PushSelf();
+        }
+
+        /// <summary>
+        /// Push a host object on the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="obj"></param>
+        public static void PushHostObject(this Squirrel vm, object obj)
+        {
+            new SqHostObject(obj).PushSelf();
         }
 
         /// <summary>
@@ -357,6 +500,7 @@ namespace Bloom.Handlers
                         vm.PushObject(sqObj.ObjectRef);
                         break;
                     }
+                    new SqHostObject(obj).PushSelf();
                     throw new InvalidOperationException($"Cannot push value of type {obj.GetType().Name}");
                 case nameof(Byte):
                     vm.PushInteger((byte)obj);
@@ -402,6 +546,10 @@ namespace Bloom.Handlers
             {
                 default:
                     throw new InvalidOperationException($"Cannot get value of type {type}");
+                case ObjectType.UserData:
+                    return vm.GetHostObject(idx);
+                case ObjectType.Closure:
+                    return vm.GetClosure(idx);
                 case ObjectType.Instance:
                     return vm.GetInstance(idx);
                 case ObjectType.Class:
@@ -428,7 +576,59 @@ namespace Bloom.Handlers
         // = Cores =
         private static void RegisterCores()
         {
+            GlobalCore.RegisterCore();
             ConsoleCore.RegisterCore();
+        }
+
+        public static class GlobalCore
+        {
+            public static void RegisterCore()
+            {
+                SetGlobal("Test", MakeFunction(Test));
+                SetGlobal("TextureRegion", MakeFunction(CreateTextureRegion));
+                SetGlobal("GetContent", MakeFunction(GetContent));
+            }
+
+            public static int Test(Squirrel vm, int argCount)
+            {
+                if (argCount != 0)
+                    throw new Exception();
+                return 0;
+            }
+
+            public static int CreateTextureRegion(Squirrel vm, int argCount)
+            {
+                if (argCount == 2)
+                {
+                    var xy = GetArg(0, VectorClass.RegisteredClass, "Vector");
+                    var wh = GetArg(1, VectorClass.RegisteredClass, "Vector");
+                    vm.PushHostObject(new TextureRegion(null, new Vector4(
+                            xy.Get<float>("X"), xy.Get<float>("Y"), wh.Get<float>("X"), wh.Get<float>("Y")
+                        )));
+                    return 1;
+                }
+                else if (argCount == 3)
+                {
+                    var tex = GetArg<Texture2D>(0);
+                    var xy = GetArg(1, VectorClass.RegisteredClass, "Vector");
+                    var wh = GetArg(2, VectorClass.RegisteredClass, "Vector");
+                    vm.PushHostObject(new TextureRegion(tex, new Vector4(
+                            xy.Get<float>("X"), xy.Get<float>("Y"), wh.Get<float>("X"), wh.Get<float>("Y")
+                        )));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 2, 3);
+            }
+
+            public static int GetContent(Squirrel vm, int argCount)
+            {
+                if (argCount == 1)
+                {
+                    vm.PushHostObject(Scenes.GameScene.Current.Content.GetLoadedContent<object>(GetArg<string>(0)));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 1);
+            }
         }
 
         public static class ConsoleCore
@@ -438,8 +638,8 @@ namespace Bloom.Handlers
                 var module = new SqTable();
                 SetGlobal("Console", module);
 
-                module["Write"] = MakeFunction(ConsoleCore.Write);
-                module["WriteLine"] = MakeFunction(ConsoleCore.WriteLine);
+                module["Write"] = MakeFunction(Write);
+                module["WriteLine"] = MakeFunction(WriteLine);
             }
 
             public static int Write(Squirrel vm, int argCount)
@@ -456,6 +656,49 @@ namespace Bloom.Handlers
                 Console.WriteLine();
                 return 0;
             }
+        }
+
+        public static class ErrorHelper
+        {
+            public static Exception WrongRightOperandType(params string[] expectedTypes)
+            {
+                return new Exception($"Right-hand operand operand was the wrong type; expected {string.Join("/", expectedTypes)}");
+            }
+
+            public static Exception WrongArgumentCount(int count, params int[] expectedCounts)
+            {
+                return new ArgumentException($"Invalid number of arguments; expected {string.Join("/", expectedCounts)} arguments but got {count}");
+            }
+
+            public static Exception WrongArgumentType(int num, string type, params string[] expectedTypes)
+            {
+                return new ArgumentException($"Argument {num} was the wrong type; expected {string.Join("/", expectedTypes)} but got {type}");
+            }
+
+            public static Exception WrongMemberOrSlotType(object key, params string[] expectedTypes)
+            {
+                return new Exception($"Member/slot {key} was the wrong type; expected {string.Join("/", expectedTypes)}");
+            }
+
+            public static Exception WrongType(string name, params string[] expectedTypes)
+            {
+                return new Exception($"{name} was the wrong type; expected {string.Join("/", expectedTypes)}");
+            }
+
+            public static Exception WrongType(string name, params Type[] expectedTypes)
+            {
+                return new Exception($"{name} was the wrong type; expected {string.Join("/", expectedTypes.Select(e => e.Name))}");
+            }
+        }
+    }
+
+    public static class TypeCheckExtensions
+    {
+        public static T GetAs<T>(this object obj)
+        {
+            if (obj is T ret)
+                return ret;
+            throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(int));
         }
     }
 }

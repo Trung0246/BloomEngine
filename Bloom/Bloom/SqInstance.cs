@@ -26,10 +26,15 @@ namespace Bloom
                 PushSelf();
                 VM.PushDynamic(key);
                 VM.PushDynamic(value);
-                if (!VM.NewSlot(-3, false).IsOK())
+                if (!VM.SetFixed(-3).IsOK())
                 {
-                    VM.Pop(1);
-                    throw new Exception($"Unable to create/set slot with key {key}");
+                    VM.PushDynamic(key);
+                    VM.PushDynamic(value);
+                    if (!VM.NewSlot(-3, false).IsOK())
+                    {
+                        VM.Pop(1);
+                        throw new Exception($"Unable to set member/slot with key {key}");
+                    }
                 }
                 VM.Pop(1);
             }
@@ -53,6 +58,27 @@ namespace Bloom
             return obj;
         }
 
+        public SqClass Class
+        {
+            get
+            {
+                PushSelf();
+                VM.GetClass(VM.GetTop());
+                var thisClass = VM.GetSqClass(-1);
+                VM.Pop(2);
+                return thisClass;
+            }
+        }
+
+        public bool IsInstanceOf(SqClass sqClass)
+        {
+            PushSelf();
+            sqClass.PushSelf();
+            var isInstance = VM.InstanceOf();
+            VM.Pop(2);
+            return isInstance;
+        }
+
         public void PushValue(object key)
         {
             PushSelf();
@@ -65,11 +91,11 @@ namespace Bloom
             VM.RemoveFixed(-2);
         }
 
-        public void CallMemberOrSlot(object key, params object[] arguments)
+        public object[] CallMemberOrSlot(object key, params object[] arguments)
         {
             PushValue(key);
             PushSelf();
-            ScriptHandler.PopToCallMethod(-2, arguments);
+            return ScriptHandler.PopToCallAsMethod(-2, arguments);
         }
 
         public bool ContainsMemberOrSlot(object key)
@@ -84,6 +110,28 @@ namespace Bloom
             }
             VM.Pop(1);
             return false;
+        }
+
+        public T Get<T>(object key)
+        {
+            var val = this[key];
+            if (val is T already)
+                return already;
+            try
+            {
+                return (T)val;
+            }
+            catch
+            {
+                try
+                {
+                    return (T)Convert.ChangeType(val, typeof(T));
+                }
+                catch
+                {
+                    throw ScriptHandler.ErrorHelper.WrongMemberOrSlotType(key, typeof(T).Name);
+                }
+            }
         }
 
         public bool TryGetValue(object key, out object value)
