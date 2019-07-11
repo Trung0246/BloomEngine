@@ -28,7 +28,7 @@ namespace Bloom.SqClasses
 
         public static int Constructor(Squirrel vm, int argCount)
         {
-            var self = ScriptHandler.This;
+            var self = ((SqInstance)ScriptHandler.This);
             var duration = ScriptHandler.GetArg<double>(0);
             var times = ScriptHandler.GetArg<int>(1);
             var func = ScriptHandler.GetArg<SqClosure>(2);
@@ -45,7 +45,7 @@ namespace Bloom.SqClasses
 
         public static int Stop(Squirrel vm, int argCount)
         {
-            var self = ScriptHandler.This;
+            var self = ((SqInstance)ScriptHandler.This);
             if (!Timers.TryGetValue(self, out var timer))
                 throw new InvalidOperationException("Cannot stop a Timer that is not running");
             Timers.Remove(self);

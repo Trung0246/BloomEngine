@@ -56,5 +56,10 @@ namespace Bloom
         {
             return base.GetHashCode();
         }
+
+        public static implicit operator SqClosure(SqDotNet.Object obj)
+        {
+            return new SqClosure(obj);
+        }
     }
 }

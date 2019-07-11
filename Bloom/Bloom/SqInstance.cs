@@ -6,8 +6,32 @@ namespace Bloom
 {
     public class SqInstance : SqObject
     {
-        public object this[object key]
+        public object this[MemberHandle handle]
         {
+            get
+            {
+                PushSelf();
+                if (!VM.GetByHandleFixed(-1, handle).IsOK())
+                {
+                    VM.Pop(1);
+                    throw new Exception($"Unable to get member with handle {handle}");
+                }
+                var ret = VM.GetDynamic(-1);
+                VM.Pop(2);
+                return ret;
+            }
+            set
+            {
+                PushSelf();
+                VM.PushDynamic(value);
+                if (!VM.SetByHandleFixed(-2, handle).IsOK())
+                {
+                    VM.Pop(1);
+                    throw new Exception($"Unable to set member with handle {handle} to value {value}");
+                }
+                VM.Pop(1);
+            }
+            /*
             get
             {
                 PushSelf();
@@ -28,16 +52,11 @@ namespace Bloom
                 VM.PushDynamic(value);
                 if (!VM.SetFixed(-3).IsOK())
                 {
-                    VM.PushDynamic(key);
-                    VM.PushDynamic(value);
-                    if (!VM.NewSlot(-3, false).IsOK())
-                    {
-                        VM.Pop(1);
-                        throw new Exception($"Unable to set member/slot with key {key}");
-                    }
+                    throw new Exception($"Unable to set member/slot with key {key}");
                 }
                 VM.Pop(1);
             }
+*/
         }
 
         public SqInstance(SqClass sqClass) : this(GenerateInstanceRef(ScriptHandler.Squirrel, sqClass))
@@ -112,9 +131,9 @@ namespace Bloom
             return false;
         }
 
-        public T Get<T>(object key)
+        public T Get<T>(MemberHandle handle)
         {
-            var val = this[key];
+            var val = this[handle];
             if (val is T already)
                 return already;
             try
@@ -129,7 +148,7 @@ namespace Bloom
                 }
                 catch
                 {
-                    throw ScriptHandler.ErrorHelper.WrongMemberOrSlotType(key, typeof(T).Name);
+                    throw ScriptHandler.ErrorHelper.WrongMemberOrSlotType(handle, typeof(T).Name);
                 }
             }
         }
@@ -184,6 +203,11 @@ namespace Bloom
         public override int GetHashCode()
         {
             return base.GetHashCode();
+        }
+
+        public static implicit operator SqInstance(SqDotNet.Object obj)
+        {
+            return new SqInstance(obj);
         }
     }
 }

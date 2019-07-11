@@ -17,11 +17,5 @@ namespace Bloom.SqClasses
             RegisteredClass = new EnemyClass();
             ScriptHandler.SetGlobal("Enemy", RegisteredClass);
         }
-
-        public static int Test(Squirrel vm, int argCount)
-        {
-            Console.Write(ScriptHandler.This["Foo"]);
-            return 0;
-        }
     }
 }

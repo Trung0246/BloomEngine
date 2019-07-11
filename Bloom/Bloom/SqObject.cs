@@ -22,7 +22,7 @@ namespace Bloom
             VM.Release(ObjectRef);
         }
 
-        public virtual void PushSelf()
+        public void PushSelf()
         {
             VM.PushObject(ObjectRef);
         }
@@ -67,6 +67,11 @@ namespace Bloom
         public static bool operator !=(SqObject left, SqObject right)
         {
             return !(left == right);
+        }
+
+        public static implicit operator SqObject(SqDotNet.Object obj)
+        {
+            return new SqObject(ScriptHandler.Squirrel, obj);
         }
     }
 }

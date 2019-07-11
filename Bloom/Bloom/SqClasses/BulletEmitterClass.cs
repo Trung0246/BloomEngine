@@ -11,14 +11,19 @@ namespace Bloom.SqClasses
     {
         public static BulletEmitterClass RegisteredClass { get; private set; }
 
+        public MemberHandle HndPosition { get; }
+        public MemberHandle HndAngle { get; }
+        public MemberHandle HndFire { get; }
+        public MemberHandle HndFireBullet { get; }
+
         private BulletEmitterClass() : base("BulletEmitter")
         {
-            NewField("Position", VectorClass.RegisteredClass.CallConstructor(0f, 0f, 0f));
-            NewField("Angle", 0f);
+            HndPosition =   NewField("Position");
+            HndAngle =      NewField("Angle");
 
             SetConstructor(ScriptHandler.MakeFunction(Constructor));
-            NewMethod("Fire", ScriptHandler.MakeFunction(Fire));
-            NewMethod("FireBullet", ScriptHandler.MakeFunction(FireBullet));
+            HndFire =       NewMethod("Fire", ScriptHandler.MakeFunction(Fire));
+            HndFireBullet = NewMethod("FireBullet", ScriptHandler.MakeFunction(FireBullet));
         }
 
         public static void Register()
@@ -29,9 +34,9 @@ namespace Bloom.SqClasses
 
         public static int Constructor(Squirrel vm, int argCount)
         {
-            var self = ScriptHandler.This;
-            self["Position"] = ScriptHandler.GetArg(0, VectorClass.RegisteredClass, "Vector");
-            self["Angle"] = ScriptHandler.GetArg<float>(1);
+            var self = (SqInstance)ScriptHandler.This;
+            self[RegisteredClass.HndPosition] = ScriptHandler.GetArg<Vector2>(0);
+            self[RegisteredClass.HndAngle] = ScriptHandler.GetArg<float>(1);
             return 0;
         }
 
@@ -42,12 +47,12 @@ namespace Bloom.SqClasses
 
         public static int FireBullet(Squirrel vm, int argCount)
         {
-            var pos = ScriptHandler.GetArg(0, VectorClass.RegisteredClass, "Vector");
+            var pos = ScriptHandler.GetArg<Vector2>(0, false);
             var ang = ScriptHandler.GetArg<float>(1);
             var speed = ScriptHandler.GetArg<float>(2);
             var textureRegion = ScriptHandler.GetArg<TextureRegion>(3);
             GameScene.Current.BulletHandler.FireRaw(
-                    new Vector3(pos.Get<float>("X"), pos.Get<float>("Y"), pos.Get<float>("Z")),
+                    new Vector3(pos, 0f),
                     ang,
                     speed,
                     textureRegion,

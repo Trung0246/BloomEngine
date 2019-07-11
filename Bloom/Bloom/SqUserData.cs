@@ -32,7 +32,6 @@ namespace Bloom
         {
             vm.NewUserData(size);
             vm.GetStackObj(-1, out var obj);
-            vm.PushObject(obj);
             return obj;
         }
 

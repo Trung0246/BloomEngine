@@ -24,6 +24,6 @@ class CircleEmitter extends BulletEmitter
 
 function TestEmitter()
 {
-	local circleTest = CircleEmitter(Vector(0, 0, 0), 0);
+	local circleTest = CircleEmitter(Vector(0, 0), 0);
 	local timer = Timer(0.1, -1, function () { circleTest.Angle += 1; circleTest.Fire(); });
 }

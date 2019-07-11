@@ -205,7 +205,6 @@ namespace Bloom
             if (array.Length - index < Count)
                 throw new ArgumentOutOfRangeException(nameof(index));
 
-            int count = Count;
             foreach (var pair in Pairs)
             {
                 array[index++] = pair;
@@ -250,6 +249,11 @@ namespace Bloom
         public override int GetHashCode()
         {
             return base.GetHashCode();
+        }
+
+        public static implicit operator SqTable(SqDotNet.Object obj)
+        {
+            return new SqTable(obj);
         }
     }
 

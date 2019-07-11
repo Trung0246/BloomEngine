@@ -29,7 +29,6 @@ namespace Bloom.Handlers
             //Squirrel.EnableDebugInfo(true);
 
             RegisterCores();
-            VectorClass.Register();
             TimerClass.Register();
             BulletEmitterClass.Register();
             EnemyClass.Register();
@@ -38,12 +37,6 @@ namespace Bloom.Handlers
             Squirrel.PushRootTable();
             PopToCallAsMethod(-2);
             //CallGlobal("main");
-
-            var hobj = new SqHostObject(5);
-            hobj.PushSelf();
-            hobj = Squirrel.GetHostObject(-1);
-            Squirrel.Pop(1);
-            Console.WriteLine(hobj.Object);
         }
 
         public static void Close()
@@ -232,6 +225,16 @@ namespace Bloom.Handlers
         }
 
         /// <summary>
+        /// Release a Squirrel function
+        /// </summary>
+        /// <param name="func"></param>
+        /// <returns></returns>
+        public static bool ReleaseFunction(Func<Squirrel, int, int> func)
+        {
+            return SquirrelFunctions.Remove(func);
+        }
+
+        /// <summary>
         /// Get an argument (if in a called function)
         /// </summary>
         /// <param name="idx"></param>
@@ -263,24 +266,35 @@ namespace Bloom.Handlers
         /// </summary>
         /// <param name="idx"></param>
         /// <returns></returns>
-        public static T GetArg<T>(int idx)
+        public static T GetArg<T>(int idx, bool allowNull = true)
         {
             if (2 + idx > Squirrel.GetTop())
                 return default;
             var val = Squirrel.GetDynamic(2 + idx);
-            if (val is T already)
-                return already;
+            if (val is null)
+            {
+                if (!allowNull)
+                    throw ErrorHelper.WrongArgumentType(idx, "null", typeof(T).Name);
+                return default;
+            }
             if (val is SqHostObject hostObj)
             {
+                var pointedObject = hostObj.Object;
+                if (pointedObject is T pointedAlready)
+                {
+                    return pointedAlready;
+                }
                 try
                 {
-                    return (T)Convert.ChangeType(hostObj.Object, typeof(T));
+                    return (T)Convert.ChangeType(pointedObject, typeof(T));
                 }
                 catch
                 {
                     throw ErrorHelper.WrongArgumentType(idx, hostObj.Object.GetType().Name, typeof(T).Name);
                 }
             }
+            if (val is T already)
+                return already;
             try
             {
                 return (T)Convert.ChangeType(val, typeof(T));
@@ -298,7 +312,14 @@ namespace Bloom.Handlers
         /// <summary>
         /// The instance representing "this" during a call
         /// </summary>
-        public static SqInstance This => Squirrel.GetInstance(1);
+        public static SqDotNet.Object This
+        {
+            get
+            {
+                Squirrel.GetStackObj(1, out var self);
+                return self;
+            }
+        }
 
         // = Squirrel extensions =
 
@@ -328,6 +349,34 @@ namespace Bloom.Handlers
             if (idx < 0)
                 return vm.Set(Squirrel.GetTop() + idx + 1);
             return vm.Set(idx);
+        }
+
+        /// <summary>
+        /// For whatever reason, the normal Squirrel.Get is broken with negative indices
+        /// so this is a workaround extension method
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        /// <returns></returns>
+        public static int GetByHandleFixed(this Squirrel vm, int idx, MemberHandle handle)
+        {
+            if (idx < 0)
+                return vm.GetByHandle(Squirrel.GetTop() + idx + 1, handle);
+            return vm.GetByHandle(idx, handle);
+        }
+
+        /// <summary>
+        /// For whatever reason, the normal Squirrel.Set is broken with negative indices
+        /// so this is a workaround extension method
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        /// <returns></returns>
+        public static int SetByHandleFixed(this Squirrel vm, int idx, MemberHandle handle)
+        {
+            if (idx < 0)
+                return vm.SetByHandle(Squirrel.GetTop() + idx + 1, handle);
+            return vm.SetByHandle(idx, handle);
         }
 
         /// <summary>
@@ -383,6 +432,17 @@ namespace Bloom.Handlers
         {
             vm.GetStackObj(idx, out var tableRef);
             return new SqTable(tableRef);
+        }
+
+        /// <summary>
+        /// Get the array at idx in the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="idx"></param>
+        public static SqArray GetArray(this Squirrel vm, int idx)
+        {
+            vm.GetStackObj(idx, out var tableRef);
+            return new SqArray(tableRef);
         }
 
         /// <summary>
@@ -451,6 +511,26 @@ namespace Bloom.Handlers
         }
 
         /// <summary>
+        /// Push a closure on the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="closure"></param>
+        public static void PushClosure(this Squirrel vm, SqClosure closure)
+        {
+            vm.PushObject(closure.ObjectRef);
+        }
+
+        /// <summary>
+        /// Push an array on the stack
+        /// </summary>
+        /// <param name="vm"></param>
+        /// <param name="array"></param>
+        public static void PushArray(this Squirrel vm, SqArray array)
+        {
+            vm.PushObject(array.ObjectRef);
+        }
+
+        /// <summary>
         /// Push a class on the stack
         /// </summary>
         /// <param name="vm"></param>
@@ -498,13 +578,13 @@ namespace Bloom.Handlers
                     if (obj is SqObject sqObj)
                     {
                         vm.PushObject(sqObj.ObjectRef);
-                        break;
+                        return;
                     }
                     new SqHostObject(obj).PushSelf();
-                    throw new InvalidOperationException($"Cannot push value of type {obj.GetType().Name}");
+                    return;
                 case nameof(Byte):
                     vm.PushInteger((byte)obj);
-                    break;
+                    return;
                 case nameof(Int16):
                     vm.PushInteger((short)obj);
                     break;
@@ -549,11 +629,14 @@ namespace Bloom.Handlers
                 case ObjectType.UserData:
                     return vm.GetHostObject(idx);
                 case ObjectType.Closure:
+                case ObjectType.NativeClosure:
                     return vm.GetClosure(idx);
                 case ObjectType.Instance:
                     return vm.GetInstance(idx);
                 case ObjectType.Class:
                     return vm.GetSqClass(idx);
+                case ObjectType.Array:
+                    return vm.GetArray(idx);
                 case ObjectType.Table:
                     return vm.GetTable(idx);
                 case ObjectType.Integer:
@@ -584,36 +667,61 @@ namespace Bloom.Handlers
         {
             public static void RegisterCore()
             {
-                SetGlobal("Test", MakeFunction(Test));
+                SetGlobal("Vector", MakeFunction(CreateVector));
                 SetGlobal("TextureRegion", MakeFunction(CreateTextureRegion));
                 SetGlobal("GetContent", MakeFunction(GetContent));
             }
 
-            public static int Test(Squirrel vm, int argCount)
+            public static int CreateVector(Squirrel vm, int argCount)
             {
-                if (argCount != 0)
-                    throw new Exception();
-                return 0;
+                if (argCount == 2)
+                {
+                    vm.PushHostObject(new Vector2(
+                            GetArg<float>(0),
+                            GetArg<float>(1)
+                        ));
+                    return 1;
+                }
+                else if (argCount == 3)
+                {
+                    vm.PushHostObject(new Vector3(
+                            GetArg<float>(0),
+                            GetArg<float>(1),
+                            GetArg<float>(2)
+                        ));
+                    return 1;
+                }
+                else if (argCount == 4)
+                {
+                    vm.PushHostObject(new Vector4(
+                            GetArg<float>(0),
+                            GetArg<float>(1),
+                            GetArg<float>(2),
+                            GetArg<float>(3)
+                        ));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 2, 3, 4);
             }
 
             public static int CreateTextureRegion(Squirrel vm, int argCount)
             {
                 if (argCount == 2)
                 {
-                    var xy = GetArg(0, VectorClass.RegisteredClass, "Vector");
-                    var wh = GetArg(1, VectorClass.RegisteredClass, "Vector");
+                    var xy = GetArg<Vector2>(0);
+                    var wh = GetArg<Vector2>(1);
                     vm.PushHostObject(new TextureRegion(null, new Vector4(
-                            xy.Get<float>("X"), xy.Get<float>("Y"), wh.Get<float>("X"), wh.Get<float>("Y")
+                            xy, wh.X, wh.Y
                         )));
                     return 1;
                 }
                 else if (argCount == 3)
                 {
                     var tex = GetArg<Texture2D>(0);
-                    var xy = GetArg(1, VectorClass.RegisteredClass, "Vector");
-                    var wh = GetArg(2, VectorClass.RegisteredClass, "Vector");
+                    var xy = GetArg<Vector2>(1);
+                    var wh = GetArg<Vector2>(2);
                     vm.PushHostObject(new TextureRegion(tex, new Vector4(
-                            xy.Get<float>("X"), xy.Get<float>("Y"), wh.Get<float>("X"), wh.Get<float>("Y")
+                            xy, wh.X, wh.Y
                         )));
                     return 1;
                 }

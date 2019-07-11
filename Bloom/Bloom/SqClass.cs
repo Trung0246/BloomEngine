@@ -27,7 +27,7 @@ namespace Bloom
         {
             VM.Pop(baseClass is null ? 1 : 2);
 
-            NewMethod("_typeof", ScriptHandler.MakeFunction((_, __) => { VM.PushString(className, -1); return 1; }));
+            SetDelegateMethod("_typeof", ScriptHandler.MakeFunction((_, __) => { VM.PushString(className, -1); return 1; }));
         }
 
         public SqClass(SqDotNet.Object classRef)
@@ -72,7 +72,23 @@ namespace Bloom
             return ScriptHandler.PopToCallAsMethod(-2, arguments);
         }
 
-        public void NewMember(string key, object value, bool isStatic = false)
+        public void SetDelegateMember(string key, object value)
+        {
+            if (ContainsMember(key))
+                throw new InvalidOperationException($"Class already contains the member {key}");
+            PushSelf();
+            VM.PushString(key, -1);
+            VM.PushDynamic(value);
+            VM.PushNull();
+            if (!VM.NewMember(-4, false).IsOK())
+            {
+                VM.Pop(1);
+                throw new Exception($"Unable to create member \"{key}\"");
+            }
+            VM.Pop(4);
+        }
+
+        public MemberHandle NewMember(string key, object value = null, bool isStatic = false)
         {
             if (ContainsMember(key))
                 throw new InvalidOperationException($"Class already contains the member {key}");
@@ -83,24 +99,43 @@ namespace Bloom
             if (!VM.NewMember(-4, isStatic).IsOK())
             {
                 VM.Pop(1);
-                throw new Exception($"Unable to create/set member \"{key}\"");
+                throw new Exception($"Unable to create member \"{key}\"");
             }
             VM.Pop(4);
+            return GetHandle(key);
         }
 
-        public void NewMethod(string key, Function func, bool isStatic = false)
+        public MemberHandle NewMethod(string key, Function func, bool isStatic = false)
         {
-            NewMember(key, func, isStatic);
+            return NewMember(key, func, isStatic);
         }
 
-        public void SetConstructor(Function func)
+        public void SetDelegateMethod(string key, Function func)
         {
-            NewMember("constructor", func, false);
+            SetDelegateMember(key, func);
         }
 
-        public void NewField(string key, object value, bool isStatic = false)
+        public MemberHandle SetConstructor(Function func)
         {
-            NewMember(key, value, isStatic);
+            return NewMember("constructor", func, false);
+        }
+
+        public MemberHandle NewField(string key, object value = null, bool isStatic = false)
+        {
+            return NewMember(key, value, isStatic);
+        }
+
+        public MemberHandle GetHandle(string key)
+        {
+            PushSelf();
+            VM.PushString(key, -1);
+            if (!VM.GetMemberHandle(-2, out var handle).IsOK())
+            {
+                VM.Pop(1);
+                throw new Exception($"Unable to get handle of member \"{key}\"");
+            }
+            VM.Pop(1);
+            return handle;
         }
 
         public bool ContainsMember(string key)
@@ -167,6 +202,11 @@ namespace Bloom
         public override int GetHashCode()
         {
             return base.GetHashCode();
+        }
+
+        public static implicit operator SqClass(SqDotNet.Object obj)
+        {
+            return new SqClass(obj);
         }
     }
 }
