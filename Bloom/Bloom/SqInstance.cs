@@ -98,26 +98,25 @@ namespace Bloom
             return isInstance;
         }
 
-        public void PushValue(object key)
+        public void PushMemberValue(MemberHandle handle)
         {
             PushSelf();
-            VM.PushDynamic(key);
-            if (!VM.GetFixed(-2).IsOK())
+            if (!VM.GetByHandleFixed(-1, handle).IsOK())
             {
                 VM.Pop(1);
-                throw new Exception($"Unable to read slot {key}");
+                throw new Exception($"Unable to get member with handle {handle}");
             }
             VM.RemoveFixed(-2);
         }
 
-        public object[] CallMemberOrSlot(object key, params object[] arguments)
+        public object[] CallMember(MemberHandle handle, params object[] arguments)
         {
-            PushValue(key);
+            PushMemberValue(handle);
             PushSelf();
             return ScriptHandler.PopToCallAsMethod(-2, arguments);
         }
 
-        public bool ContainsMemberOrSlot(object key)
+        public bool ContainsSlot(object key)
         {
             PushSelf();
             VM.PushDynamic(key);
@@ -151,31 +150,6 @@ namespace Bloom
                     throw ScriptHandler.ErrorHelper.WrongMemberOrSlotType(handle, typeof(T).Name);
                 }
             }
-        }
-
-        public bool TryGetValue(object key, out object value)
-        {
-            PushSelf();
-            VM.PushDynamic(-1);
-            var found = VM.GetFixed(-2).IsOK();
-            if (found)
-            {
-                value = VM.GetDynamic(-1);
-                VM.Pop(2);
-                return true;
-            }
-            VM.Pop(1);
-            value = default;
-            return false;
-        }
-
-        public bool RemoveMemberOrSlot(object key)
-        {
-            PushSelf();
-            VM.PushDynamic(-1);
-            var deleted = VM.DeleteSlot(-2, false).IsOK();
-            VM.Pop(1);
-            return deleted;
         }
 
         public void Clear()

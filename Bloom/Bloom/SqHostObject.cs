@@ -12,13 +12,13 @@ namespace Bloom
     {
         public class ReferencedObject
         {
-            private static long NextHandleIndex;
+            private static ulong NextHandleIndex;
 
-            public long Index;
+            public ulong Index;
             public GCHandle Handle;
             public Squirrel.Unmanaged.SqReleaseHook ReleaseHook;
 
-            public ReferencedObject(SqHostObject hostObj, object obj, out long handleIndex)
+            public ReferencedObject(SqHostObject hostObj, object obj, out ulong handleIndex)
             {
                 try
                 {
@@ -33,8 +33,8 @@ namespace Bloom
                         {
                             unsafe
                             {
-                                Handles[*(long*)ptr].Handle.Free();
-                                Handles.Remove(*(long*)ptr);
+                                Handles[*(ulong*)ptr].Handle.Free();
+                                Handles.Remove(*(ulong*)ptr);
                             }
                             return 1;
                         }
@@ -43,7 +43,7 @@ namespace Bloom
                 var attemptsToFindNextIndex = 0UL;
                 do
                 {
-                    NextHandleIndex++;
+                    NextHandleIndex = unchecked(NextHandleIndex + 1);
                     attemptsToFindNextIndex++;
                 } while (attemptsToFindNextIndex < ulong.MaxValue && Handles.ContainsKey(NextHandleIndex));
                 handleIndex = Index;
@@ -55,8 +55,8 @@ namespace Bloom
             }
         }
 
-        public static Dictionary<long, ReferencedObject> Handles { get; }
-            = new Dictionary<long, ReferencedObject>();
+        public static Dictionary<ulong, ReferencedObject> Handles { get; }
+            = new Dictionary<ulong, ReferencedObject>();
 
         public static Dictionary<Type, SqTable> Delegates { get; }
             = new Dictionary<Type, SqTable>();
@@ -336,7 +336,7 @@ namespace Bloom
                                 throw new Exception($"Cannot set property \"{self.Object.GetType()}.{prop.Name}\"");
                             prop.GetSetMethod().Invoke(
                                     (self).Object,
-                                    new object[] { ScriptHandler.GetArg(0) }
+                                    new object[] { ScriptHandler.GetArg(0, prop.PropertyType) }
                                 );
                             return 0;
                         }
@@ -384,13 +384,13 @@ namespace Bloom
             return props;
         }
 
-        private long HandleIndex
+        private ulong HandleIndex
         {
             get
             {
                 unsafe
                 {
-                    return *(long*)UserDataPointer;
+                    return *(ulong*)UserDataPointer;
                 }
             }
         }
@@ -437,7 +437,7 @@ namespace Bloom
             var refObj = new ReferencedObject(this, obj, out var handleIndex);
             unsafe
             {
-                *(long*)UserDataPointer = handleIndex;
+                *(ulong*)UserDataPointer = handleIndex;
             }
 
             SetDelegate(GetDelegate(obj.GetType()));

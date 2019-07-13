@@ -22,8 +22,22 @@ class CircleEmitter extends BulletEmitter
 	}
 }
 
+class TestEnemy
+{
+	InternalEnemy = null;
+
+	constructor(position, angle)
+	{
+	    InternalEnemy = Enemy(100);
+	    InternalEnemy.Position = position;
+	    InternalEnemy.Rotation = angle;
+	}
+}
+
+
 function TestEmitter()
 {
 	local circleTest = CircleEmitter(Vector(0, 0), 0);
 	local timer = Timer(0.1, -1, function () { circleTest.Angle += 1; circleTest.Fire(); });
+	local testEnemy = TestEnemy(Vector(0, 0, 0), 0.1);
 }

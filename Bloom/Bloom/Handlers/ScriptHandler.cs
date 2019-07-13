@@ -31,7 +31,6 @@ namespace Bloom.Handlers
             RegisterCores();
             TimerClass.Register();
             BulletEmitterClass.Register();
-            EnemyClass.Register();
 
             PushCompiledFile("classes.nut");
             Squirrel.PushRootTable();
@@ -259,6 +258,52 @@ namespace Bloom.Handlers
             if (val is SqInstance instance && instance.IsInstanceOf(sqClass))
                 return instance;
             throw ErrorHelper.WrongArgumentType(idx, val.GetType().Name, className);
+        }
+
+        /// <summary>
+        /// Get an argument (if in a called function) and check the type
+        /// </summary>
+        /// <param name="idx"></param>
+        /// <returns></returns>
+        public static object GetArg(int idx, Type asType, bool allowNull = true)
+        {
+            if (2 + idx > Squirrel.GetTop())
+                return default;
+            var val = Squirrel.GetDynamic(2 + idx);
+            if (val is null)
+            {
+                if (!allowNull)
+                    throw ErrorHelper.WrongArgumentType(idx, "null", asType.Name);
+                return default;
+            }
+            if (val is SqHostObject hostObj)
+            {
+                var pointedObj = hostObj.Object;
+                if (pointedObj.GetType() == asType)
+                    return pointedObj;
+                try
+                {
+                    return Convert.ChangeType(pointedObj, asType);
+                }
+                catch
+                {
+                    throw ErrorHelper.WrongArgumentType(idx, hostObj.Object.GetType().Name, asType.Name);
+                }
+            }
+            if (val.GetType() == asType)
+                return val;
+            try
+            {
+                return Convert.ChangeType(val, asType);
+            }
+            catch
+            {
+                if (val is SqInstance inst)
+                {
+                    throw ErrorHelper.WrongArgumentType(idx, $"{nameof(SqInstance)} (instanceof {inst.Class.GetType().Name})", asType.Name);
+                }
+                throw ErrorHelper.WrongArgumentType(idx, val.GetType().Name, asType.Name);
+            }
         }
 
         /// <summary>
@@ -670,6 +715,7 @@ namespace Bloom.Handlers
                 SetGlobal("Vector", MakeFunction(CreateVector));
                 SetGlobal("TextureRegion", MakeFunction(CreateTextureRegion));
                 SetGlobal("GetContent", MakeFunction(GetContent));
+                SetGlobal("Enemy", MakeFunction(CreateEnemy));
             }
 
             public static int CreateVector(Squirrel vm, int argCount)
@@ -733,6 +779,16 @@ namespace Bloom.Handlers
                 if (argCount == 1)
                 {
                     vm.PushHostObject(Scenes.GameScene.Current.Content.GetLoadedContent<object>(GetArg<string>(0)));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 1);
+            }
+
+            public static int CreateEnemy(Squirrel vm, int argCount)
+            {
+                if (argCount == 1)
+                {
+                    vm.PushHostObject(new Enemy(GetArg<float>(0)));
                     return 1;
                 }
                 throw ErrorHelper.WrongArgumentCount(argCount, 1);
@@ -806,7 +862,25 @@ namespace Bloom.Handlers
         {
             if (obj is T ret)
                 return ret;
-            throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(int));
+            throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(T).Name);
+        }
+        public static T GetReturnAs<T>(this object[] array, int idx)
+        {
+            if (array is null)
+                throw new NullReferenceException("No values were returned");
+            if (idx < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(idx), $"Cannot get returned value with index {idx}; " +
+                    $"index is less than 0");
+            }
+            if (idx >= array.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(idx), $"Cannot get returned value with index {idx}; " +
+                    $"not enough values were returned");
+            }
+            if (array[idx] is T ret)
+                return ret;
+            throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(T).Name);
         }
     }
 }

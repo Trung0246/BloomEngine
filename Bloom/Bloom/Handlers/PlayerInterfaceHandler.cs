@@ -7,7 +7,7 @@ namespace Bloom.Handlers
     /// <summary>
     /// Handler for player input, player information, etc.
     /// </summary>
-    public class PlayerHandler : IDebug
+    public class PlayerInterfaceHandler : IDebug
     {
         /// <summary>
         /// Used for interfacing with a single player's input, information, etc.
@@ -50,17 +50,17 @@ namespace Bloom.Handlers
             }
         }
 
-        public string Name => nameof(PlayerHandler);
+        public string Name => nameof(PlayerInterfaceHandler);
 
-        public string Description => "The timer handler";
+        public string Description => "The player interface handler";
 
-        private PlayerInterface[] _Players = new PlayerInterface[] { };
+        private PlayerInterface[] _PlayerInterfaces = new PlayerInterface[] { };
         private int _Count;
 
         /// <summary>
         /// The player interfaces
         /// </summary>
-        public PlayerInterface[] Players => _Players.ToArray();
+        public PlayerInterface[] PlayerInterfaces => _PlayerInterfaces.ToArray();
 
         /// <summary>
         /// Get or set the player count
@@ -75,21 +75,21 @@ namespace Bloom.Handlers
                 if (value < _Count)
                 {
                     for (var i = value; i < _Count; i++)
-                        _Players[i].Dispose();
-                    _Players = _Players.Take(value).ToArray();
+                        _PlayerInterfaces[i].Dispose();
+                    _PlayerInterfaces = _PlayerInterfaces.Take(value).ToArray();
                     _Count = value;
                 }
                 else if (value > _Count)
                 {
-                    var newPlayers = _Players.AsEnumerable();
+                    var newPlayers = _PlayerInterfaces.AsEnumerable();
                     for (; _Count < value; _Count++)
                         newPlayers = Enumerable.Append(newPlayers, new PlayerInterface(_Count));
-                    _Players = newPlayers.ToArray();
+                    _PlayerInterfaces = newPlayers.ToArray();
                 }
             }
         }
 
-        public PlayerHandler(int playerCount = 1)
+        public PlayerInterfaceHandler(int playerCount = 1)
         {
             Count = playerCount;
         }

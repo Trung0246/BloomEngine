@@ -21,7 +21,7 @@ namespace Bloom.Handlers
         private Graphics Graphics => Scene.Graphics;
         private ImageEffect PreviousEffect { get; }
         private BasicRenderPass RenderPass;
-        private SpriteEffect SpriteEffect;
+        public SpriteEffect SpriteEffect;
 
         public BulletHandler(GameScene scene, int maxBullets, ImageEffect previousEffect = null)
         {
