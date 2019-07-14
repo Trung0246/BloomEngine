@@ -97,6 +97,19 @@ namespace Bloom
             : base(ScriptHandler.Squirrel, arrayRef)
         {
         }
+        public SqArray(IEnumerable<object> enumerable)
+            : this(enumerable.Count())
+        {
+            PushSelf();
+            var i = 0;
+            foreach (var e in enumerable)
+            {
+                VM.PushInteger(i++);
+                VM.PushDynamic(e);
+                VM.Set(-2);
+            }
+            VM.Pop(1);
+        }
 
         private static SqDotNet.Object GenerateArrayRef(Squirrel vm, int size)
         {
@@ -165,6 +178,15 @@ namespace Bloom
             throw new NotSupportedException("SqArray has a fixed size");
         }
 
+        public T[] ToArray<T>()
+        {
+            var arr = new T[Count];
+            var i = 0;
+            foreach (var e in this)
+                arr[i++] = e.GetAs<T>();
+            return arr;
+        }
+
         IEnumerator<object> IEnumerable<object>.GetEnumerator()
         {
             return GetEnumerator();
@@ -208,6 +230,20 @@ namespace Bloom
         public static implicit operator SqArray(SqDotNet.Object obj)
         {
             return new SqArray(obj);
+        }
+
+        public static implicit operator SqArray(Array array)
+        {
+            return new SqArray(array.Cast<object>());
+        }
+
+        public static implicit operator Array(SqArray sqArray)
+        {
+            var array = new object[sqArray.Count];
+            var i = 0;
+            foreach (var e in sqArray)
+                array.SetValue(e, i++);
+            return array;
         }
     }
 

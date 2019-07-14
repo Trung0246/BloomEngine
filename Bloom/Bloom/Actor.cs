@@ -5,7 +5,7 @@ using WyvernFramework.Sprites;
 
 namespace Bloom
 {
-    public class Actor
+    public class Actor : ISpriteObject
     {
         private static ulong NextID = 0;
 
@@ -13,7 +13,7 @@ namespace Bloom
         private float _health;
 
         protected ActorHandler Handler;
-        protected SpriteInstance Sprite;
+        public SpriteInstance Sprite;
 
         /// <summary>
         /// Unique Actor ID
@@ -59,12 +59,21 @@ namespace Bloom
             }
         }
 
-        public float Rotation
+        public Vector3 Velocity
         {
-            get => Sprite.Rotation;
+            get => Sprite.Velocity;
             set
             {
-                Sprite.Rotation = value;
+                Sprite.Velocity = value;
+            }
+        }
+
+        public float Rotation
+        {
+            get => MathX.RadToDeg(Sprite.Rotation);
+            set
+            {
+                Sprite.Rotation = MathX.DegToRad(value);
             }
         }
 
@@ -74,6 +83,26 @@ namespace Bloom
             set
             {
                 Sprite.Scale = value;
+            }
+        }
+
+        public SpriteImage SpriteImage
+        {
+            get => Sprite.GetSpriteImage();
+            set
+            {
+                Sprite.Texture = value.Texture;
+                Sprite.Rectangle = value.TextureRegion.Rectangle;
+                Sprite.Scale = value.Size;
+            }
+        }
+
+        public Animation Animation
+        {
+            get => Sprite.Animation;
+            set
+            {
+                Sprite.Animation = value;
             }
         }
 
@@ -87,7 +116,7 @@ namespace Bloom
         /// </summary>
         public SqClosure OnKillEvent;
 
-        public Actor(ActorHandler handler, float health)
+        public Actor(ActorHandler handler, SpriteImage image, float health)
         {
             ID = unchecked(NextID++);
             MaxHealth = health;
@@ -95,6 +124,18 @@ namespace Bloom
             Handler = handler;
             handler.Register(this);
             OnRegister();
+            Sprite = new SpriteInstance(
+                    handler.SpriteEffect,
+                    Vector3.Zero, Vector3.Zero,
+                    image.Size,
+                    image.Texture, image.TextureRegion.Rectangle,
+                    null
+                );
+        }
+
+        public void SetSpriteImage(SpriteImage image)
+        {
+            Sprite.Rectangle = image.TextureRegion.Rectangle;
         }
 
         /// <summary>

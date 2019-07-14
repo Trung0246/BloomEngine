@@ -44,7 +44,8 @@ namespace Bloom.Scenes
             EnemyHandler = new EnemyHandler(this, 10000, BulletHandler.SpriteEffect);
             EnemyHandler.Start();
 
-            ScriptHandler.CallGlobal("TestEmitter");
+            ScriptHandler.ExecuteFile("demo.nut");
+            ScriptHandler.CallGlobal("main");
         }
 
         /// <summary>
@@ -67,6 +68,7 @@ namespace Bloom.Scenes
         public override void OnUpdate()
         {
             TimerHandler.Update();
+            //System.GC.Collect(System.GC.MaxGeneration, System.GCCollectionMode.Optimized);
             //PlayerHandler.Update();
             BulletHandler.Update();
             EnemyHandler.Update();

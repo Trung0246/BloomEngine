@@ -16,7 +16,7 @@ namespace Bloom.Handlers
             public Action<Timer> Action { get; }
             public int Times { get; private set; }
             public bool Infinite => Times == -1;
-            public bool Ready => Handler.Scene.Graphics.CurrentTime >= EndTime;
+            public bool Ready => Handler.Scene.Graphics.CurrentTime >= EndTime - 0.000001;
             public bool Ended { get; private set; }
 
             public Timer(TimerHandler handler, double duration, Action<Timer> action, int times)
@@ -100,7 +100,19 @@ namespace Bloom.Handlers
             if (times < -1 || times == 0)
                 throw new ArgumentOutOfRangeException(nameof(times));
             var timer = new Timer(this, duration, action, times);
-            Timers.Add(timer);
+            if (duration > 0.000001)
+                Timers.Add(timer);
+            else
+            {
+                if (times == -1)
+                    throw new ArgumentException("Cannot start an infinite timer with a duration of 0", nameof(times));
+                while (timer.Ready)
+                {
+                    timer.Execute();
+                    if (timer.Ended)
+                        Timers.Remove(timer);
+                }
+            }
             return timer;
         }
     }

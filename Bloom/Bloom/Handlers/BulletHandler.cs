@@ -4,6 +4,7 @@ using Bloom.Scenes;
 using Bloom.RenderPasses;
 using VulkanCore;
 using System;
+using System.Linq;
 using System.Numerics;
 using System.Collections.Generic;
 
@@ -22,6 +23,8 @@ namespace Bloom.Handlers
         private ImageEffect PreviousEffect { get; }
         private BasicRenderPass RenderPass;
         public SpriteEffect SpriteEffect;
+
+        public Vector4 Bounds = new Vector4(-640, -480, 1280, 960);
 
         public BulletHandler(GameScene scene, int maxBullets, ImageEffect previousEffect = null)
         {
@@ -54,7 +57,15 @@ namespace Bloom.Handlers
 
         public void Update()
         {
-
+            if (Bullets.Count == 0)
+                return;
+            for (var i = 0; i < Bullets.Count; i++)
+            {
+                Bullets[i].UpdateNotImportant();
+            }
+            var exists = Bullets.Where(e => e.Exists).ToArray();
+            Bullets.Clear();
+            Bullets.AddRange(exists);
         }
 
         public void Draw(Semaphore start, int imageIndex, out Semaphore finished)
@@ -63,17 +74,11 @@ namespace Bloom.Handlers
             finished = SpriteEffect.FinishedSemaphore;
         }
 
-        public Bullet FireRaw(Vector3 pos, float angle, float speed, TextureRegion textureRegion, Animation anim = null)
+        public Bullet FireRaw(Vector3 pos, float angle, float speed, SpriteImage image, Animation anim = null)
         {
             var vel = new Vector3(MathX.DCos(angle) * speed, MathX.DSin(angle) * speed, 0f);
-            var tex = textureRegion.Texture;
-            var rect = textureRegion.Rectangle;
-            var scale = new Vector2(rect.Z, rect.W);
-            rect /= new Vector4(
-                    tex.Image.Extent.Width, tex.Image.Extent.Height,
-                    tex.Image.Extent.Width, tex.Image.Extent.Height
-                );
-            var sprite = new SpriteInstance(SpriteEffect, pos, vel, scale, tex, rect, anim);
+            var tex = image.Texture;
+            var sprite = new SpriteInstance(SpriteEffect, pos, vel, image.Size, tex, image.TextureRegion.Rectangle, anim);
             sprite.Rotation = MathX.DegToRad(angle - 90f);
             var bullet = new Bullet(this, sprite);
             return bullet;

@@ -2,9 +2,11 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using WyvernFramework;
+using WyvernFramework.Sprites;
 using Bloom.SqClasses;
 
 namespace Bloom.Handlers
@@ -30,9 +32,8 @@ namespace Bloom.Handlers
 
             RegisterCores();
             TimerClass.Register();
-            BulletEmitterClass.Register();
 
-            PushCompiledFile("classes.nut");
+            PushCompiledFile("demo.nut");
             Squirrel.PushRootTable();
             PopToCallAsMethod(-2);
             //CallGlobal("main");
@@ -148,6 +149,28 @@ namespace Bloom.Handlers
         public static void PushCompiledFile(string path)
         {
             PushCompiledString(File.ReadAllText(Path.Combine(ScriptRoot, path)), path);
+        }
+
+        /// <summary>
+        /// Compile a source and execute it
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="name"></param>
+        public static void ExecuteString(string source, string name)
+        {
+            if (!Squirrel.CompileBuffer(source, source.Length, name, true).IsOK())
+                throw new Exception($"Unable to compile script \"{name}\"");
+            Squirrel.PushRootTable();
+            PopToCallAsMethod(-2);
+        }
+
+        /// <summary>
+        /// Compile a source and execute it
+        /// </summary>
+        /// <param name="path"></param>
+        public static void ExecuteFile(string path)
+        {
+            ExecuteString(File.ReadAllText(Path.Combine(ScriptRoot, path)), path);
         }
 
         /// <summary>
@@ -625,6 +648,16 @@ namespace Bloom.Handlers
                         vm.PushObject(sqObj.ObjectRef);
                         return;
                     }
+                    if (obj is IEnumerable<object> enObjObj)
+                    {
+                        vm.PushArray(new SqArray(enObjObj));
+                        return;
+                    }
+                    if (obj is IEnumerable enObj)
+                    {
+                        vm.PushArray(new SqArray(enObj.Cast<object>()));
+                        return;
+                    }
                     new SqHostObject(obj).PushSelf();
                     return;
                 case nameof(Byte):
@@ -705,6 +738,8 @@ namespace Bloom.Handlers
         private static void RegisterCores()
         {
             GlobalCore.RegisterCore();
+            AnimationCore.RegisterCore();
+            EmitterCore.RegisterCore();
             ConsoleCore.RegisterCore();
         }
 
@@ -714,6 +749,7 @@ namespace Bloom.Handlers
             {
                 SetGlobal("Vector", MakeFunction(CreateVector));
                 SetGlobal("TextureRegion", MakeFunction(CreateTextureRegion));
+                SetGlobal("SpriteImage", MakeFunction(CreateSpriteImage));
                 SetGlobal("GetContent", MakeFunction(GetContent));
                 SetGlobal("Enemy", MakeFunction(CreateEnemy));
             }
@@ -774,6 +810,26 @@ namespace Bloom.Handlers
                 throw ErrorHelper.WrongArgumentCount(argCount, 2, 3);
             }
 
+            public static int CreateSpriteImage(Squirrel vm, int argCount)
+            {
+                if (argCount == 2)
+                {
+                    var xy = GetArg<Vector2>(0);
+                    var wh = GetArg<Vector2>(1);
+                    vm.PushHostObject(new SpriteImage(null, xy, wh));
+                    return 1;
+                }
+                else if (argCount == 3)
+                {
+                    var tex = GetArg<Texture2D>(0);
+                    var xy = GetArg<Vector2>(1);
+                    var wh = GetArg<Vector2>(2);
+                    vm.PushHostObject(new SpriteImage(tex, xy, wh));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 2, 3);
+            }
+
             public static int GetContent(Squirrel vm, int argCount)
             {
                 if (argCount == 1)
@@ -786,12 +842,152 @@ namespace Bloom.Handlers
 
             public static int CreateEnemy(Squirrel vm, int argCount)
             {
+                if (argCount == 2)
+                {
+                    vm.PushHostObject(new Enemy(GetArg<SpriteImage>(0), GetArg<float>(1)));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 2);
+            }
+        }
+
+        public static class AnimationCore
+        {
+            public static void RegisterCore()
+            {
+                SetGlobal("Animation", MakeFunction(CreateAnimation));
+                RegisterInstructions();
+            }
+
+            public static void RegisterInstructions()
+            {
+                var table = new SqTable();
+                SetGlobal("Instruction", table);
+                table["None"] = MakeFunction(Inst_None);
+                table["Stop"] = MakeFunction(Inst_Stop);
+                table["SetScale"] = MakeFunction(Inst_SetScale);
+                table["LerpScale"] = MakeFunction(Inst_LerpScale);
+                table["SetRotation"] = MakeFunction(Inst_SetRotation);
+                table["LerpRotation"] = MakeFunction(Inst_LerpRotation);
+                table["SetImage"] = MakeFunction(Inst_SetImage);
+            }
+
+            public static int CreateAnimation(Squirrel vm, int argCount)
+            {
                 if (argCount == 1)
                 {
-                    vm.PushHostObject(new Enemy(GetArg<float>(0)));
+                    vm.PushHostObject(new Animation(GetArg<SqArray>(0).Select(e => e.GetAs<Animation.Instruction>())));
                     return 1;
                 }
                 throw ErrorHelper.WrongArgumentCount(argCount, 1);
+            }
+
+            public static int Inst_None(Squirrel vm, int argCount)
+            {
+                if (argCount == 1)
+                {
+                    vm.PushHostObject(Animation.Instruction.None(GetArg<float>(0)));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 1);
+            }
+
+            public static int Inst_Stop(Squirrel vm, int argCount)
+            {
+                if (argCount == 0)
+                {
+                    vm.PushHostObject(Animation.Instruction.Stop());
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 0);
+            }
+
+            public static int Inst_SetScale(Squirrel vm, int argCount)
+            {
+                if (argCount == 2)
+                {
+                    vm.PushHostObject(Animation.Instruction.SetScale(
+                            GetArg<float>(0),
+                            GetArg<Vector2>(1)
+                        ));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 2);
+            }
+
+            public static int Inst_LerpScale(Squirrel vm, int argCount)
+            {
+                if (argCount == 3)
+                {
+                    vm.PushHostObject(Animation.Instruction.LerpScale(
+                            GetArg<float>(0),
+                            GetArg<float>(1),
+                            GetArg<Vector2>(2)
+                        ));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 3);
+            }
+
+            public static int Inst_SetRotation(Squirrel vm, int argCount)
+            {
+                if (argCount == 2)
+                {
+                    vm.PushHostObject(Animation.Instruction.SetRotation(
+                            GetArg<float>(0),
+                            MathX.DegToRad(GetArg<float>(1))
+                        ));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 2);
+            }
+
+            public static int Inst_LerpRotation(Squirrel vm, int argCount)
+            {
+                if (argCount == 3)
+                {
+                    vm.PushHostObject(Animation.Instruction.LerpRotation(
+                            GetArg<float>(0),
+                            GetArg<float>(1),
+                            MathX.DegToRad(GetArg<float>(2))
+                        ));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 3);
+            }
+
+            public static int Inst_SetImage(Squirrel vm, int argCount)
+            {
+                if (argCount == 2)
+                {
+                    var time = GetArg<float>(0);
+                    var image = GetArg<SpriteImage>(1);
+                    vm.PushHostObject(Animation.Instruction.SetRectangle(
+                            time,
+                            new Vector2(image.TextureRegion.Rectangle.X, image.TextureRegion.Rectangle.Y),
+                            new Vector2(image.TextureRegion.Rectangle.Z, image.TextureRegion.Rectangle.W)
+                        ));
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 2);
+            }
+        }
+
+        public static class EmitterCore
+        {
+            public static void RegisterCore()
+            {
+                SetGlobal("Emitter", MakeFunction(CreateEmitter));
+            }
+
+            public static int CreateEmitter(Squirrel vm, int argCount)
+            {
+                if (argCount == 0)
+                {
+                    vm.PushHostObject(new Emitter());
+                    return 1;
+                }
+                throw ErrorHelper.WrongArgumentCount(argCount, 0);
             }
         }
 
@@ -862,8 +1058,30 @@ namespace Bloom.Handlers
         {
             if (obj is T ret)
                 return ret;
-            throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(T).Name);
+            if (obj is SqHostObject hostObj)
+            {
+                var pointed = hostObj.Object;
+                if (pointed is T pret)
+                    return pret;
+                try
+                {
+                    return (T)Convert.ChangeType(pointed, typeof(T));
+                }
+                catch (Exception _)
+                {
+                    throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(T).Name);
+                }
+            }
+            try
+            {
+                return (T)Convert.ChangeType(obj, typeof(T));
+            }
+            catch (Exception _)
+            {
+                throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(T).Name);
+            }
         }
+
         public static T GetReturnAs<T>(this object[] array, int idx)
         {
             if (array is null)
@@ -878,9 +1096,7 @@ namespace Bloom.Handlers
                 throw new ArgumentOutOfRangeException(nameof(idx), $"Cannot get returned value with index {idx}; " +
                     $"not enough values were returned");
             }
-            if (array[idx] is T ret)
-                return ret;
-            throw ScriptHandler.ErrorHelper.WrongType("Value", typeof(T).Name);
+            return array[idx].GetAs<T>();
         }
     }
 }

@@ -45,9 +45,11 @@ namespace Bloom
         /// </summary>
         public override void OnUpdate()
         {
-            GC.Collect();
+            //GC.Collect();
             GameScene.Update();
-            Title = $"Test App | UPS={1.0 / SmoothedUpdateDuration:0.00} FPS={1.0 / SmoothedDrawDuration:0.00}";
+            Title = $"Test App | Bullets={GameScene.Current.BulletHandler.Bullets.Count}" +
+                $" UPS={1.0 / SmoothedUpdateDuration:0.00}" +
+                $" FPS={1.0 / SmoothedDrawDuration:0.00}";
         }
 
         /// <summary>

@@ -92,12 +92,16 @@ namespace Bloom
                     (vm, _) =>
                     {
                         var self = (SqHostObject)ScriptHandler.This;
-                        var key = ScriptHandler.GetArg(0);
+                        var key = ScriptHandler.GetArg(0) as string
+                            ?? throw new InvalidOperationException(
+                                    $"An object of type {self.Object.GetType().Name} " +
+                                    $"must be indexed only by string values"
+                                );
                         // Look for method
                         var methods = self["_methods"] as SqTable;
                         if (methods.TryGetValue(ScriptHandler.GetArg(0), out var method))
                         {
-                            vm.PushDynamic((method as SqClosure).CallAsMethod(self)[0]);
+                            vm.PushDynamic(method as SqClosure);
                             return 1;
                         }
                         // Look for property
@@ -307,10 +311,18 @@ namespace Bloom
                             if (!possible.Any())
                                 throw new Exception($"No matching method {type}.{name} that can consume the given arguments");
                             var toCall = possible.OrderBy(e => e.GetParameters().Length).First();
+                            var methodParams = toCall.GetParameters();
                             var args = new object[argCount];
                             for (var i = 0; i < argCount; i++)
-                                args[i] = ScriptHandler.GetArg(i);
-                            vm.PushDynamic(toCall.Invoke(self.Object, args));
+                                args[i] = ScriptHandler.GetArg(i, methodParams[i].ParameterType, true);
+                            try
+                            {
+                                vm.PushDynamic(toCall.Invoke(self.Object, args));
+                            }
+                            catch (TargetParameterCountException e)
+                            {
+                                throw new Exception($"Cannot call \"{name}\" with {argCount} arguments");
+                            }
                             return 1;
                         }
                     );
@@ -334,9 +346,11 @@ namespace Bloom
                             var setMethod = prop.GetSetMethod();
                             if (setMethod is null)
                                 throw new Exception($"Cannot set property \"{self.Object.GetType()}.{prop.Name}\"");
+                            var argType = prop.PropertyType;
+                            var val = ScriptHandler.GetArg(0, argType, true);
                             prop.GetSetMethod().Invoke(
                                     (self).Object,
-                                    new object[] { ScriptHandler.GetArg(0, prop.PropertyType) }
+                                    new object[] { val }
                                 );
                             return 0;
                         }
@@ -368,7 +382,9 @@ namespace Bloom
                 methods[0] = ScriptHandler.MakeFunction(
                         (_, __) =>
                         {
-                            field.SetValue(((SqHostObject)ScriptHandler.This).Object, ScriptHandler.GetArg(0));
+                            var argType = field.FieldType;
+                            var val = ScriptHandler.GetArg(0, argType, true);
+                            field.SetValue(((SqHostObject)ScriptHandler.This).Object, val);
                             return 0;
                         }
                     );

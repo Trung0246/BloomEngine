@@ -8,8 +8,8 @@ namespace Bloom
 {
     public class Enemy : Actor
     {
-        public Enemy(float health)
-            : base(GameScene.Current.EnemyHandler, health)
+        public Enemy(SpriteImage image, float health)
+            : base(GameScene.Current.EnemyHandler, image, health)
         {
 
         }
@@ -17,15 +17,6 @@ namespace Bloom
         protected override void OnRegister()
         {
             Debug.Info($"Enemy {this} registered", nameof(Enemy));
-
-            Sprite = new SpriteInstance(
-                    Handler.SpriteEffect,
-                    Vector3.Zero, Vector3.Zero,
-                    new Vector2(64f),
-                    GameScene.Current.Content.GetLoadedContent<Texture2D>("TestEnemy"),
-                    new Vector4(0f, 0f, 0.25f, 1f),
-                    null
-                );
 
             base.OnRegister();
         }
